@@ -40,20 +40,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger para room_stays (solicitudes de vehículo y checkout)
-DROP TRIGGER IF EXISTS room_stays_push_notification ON room_stays;
-CREATE TRIGGER room_stays_push_notification
-  AFTER INSERT OR UPDATE ON room_stays
+-- Trigger para room_stays INSERT (nuevas entradas)
+DROP TRIGGER IF EXISTS room_stays_insert_push_notification ON room_stays;
+CREATE TRIGGER room_stays_insert_push_notification
+  AFTER INSERT ON room_stays
+  FOR EACH ROW
+  WHEN (NEW.status = 'ACTIVA')
+  EXECUTE FUNCTION notify_push_notification();
+
+-- Trigger para room_stays UPDATE (solicitudes de vehículo y checkout)
+DROP TRIGGER IF EXISTS room_stays_update_push_notification ON room_stays;
+CREATE TRIGGER room_stays_update_push_notification
+  AFTER UPDATE ON room_stays
   FOR EACH ROW
   WHEN (
-    -- Nueva entrada
-    (TG_OP = 'INSERT' AND NEW.status = 'ACTIVA')
-    OR
     -- Solicitud de vehículo
-    (TG_OP = 'UPDATE' AND NEW.vehicle_requested_at IS NOT NULL AND OLD.vehicle_requested_at IS NULL)
+    (NEW.vehicle_requested_at IS NOT NULL AND OLD.vehicle_requested_at IS NULL)
     OR
     -- Solicitud de checkout
-    (TG_OP = 'UPDATE' AND NEW.valet_checkout_requested_at IS NOT NULL AND OLD.valet_checkout_requested_at IS NULL)
+    (NEW.valet_checkout_requested_at IS NOT NULL AND OLD.valet_checkout_requested_at IS NULL)
   )
   EXECUTE FUNCTION notify_push_notification();
 
