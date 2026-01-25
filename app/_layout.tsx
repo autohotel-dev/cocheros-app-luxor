@@ -40,13 +40,21 @@ function RootLayoutNav() {
         });
 
         async function fetchEmployeeId(userId: string) {
-            const { data } = await supabase
+            console.log('[Layout] Buscando empleado con auth_user_id:', userId);
+            const { data, error } = await supabase
                 .from('employees')
                 .select('id')
-                .eq('user_id', userId)
+                .eq('auth_user_id', userId)
                 .single();
+            
+            if (error) {
+                console.error('[Layout] Error buscando empleado:', error);
+            }
             if (data?.id) {
+                console.log('[Layout] Empleado encontrado:', data.id);
                 setEmployeeId(data.id);
+            } else {
+                console.warn('[Layout] No se encontró empleado para userId:', userId);
             }
         }
 
