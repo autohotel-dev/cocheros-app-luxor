@@ -35,12 +35,18 @@ export function useNotifications(employeeId: string | null) {
         if (!employeeId) return;
 
         // Registrar para notificaciones push
+        console.log('[Notifications] Iniciando registro con employeeId:', employeeId);
         registerForPushNotificationsAsync().then(token => {
+            console.log('[Notifications] Token obtenido:', token);
             if (token) {
                 setExpoPushToken(token);
                 // Guardar token en Supabase
                 savePushToken(employeeId, token);
+            } else {
+                console.warn('[Notifications] No se pudo obtener token');
             }
+        }).catch(err => {
+            console.error('[Notifications] Error registrando:', err);
         });
 
         // Listener para notificaciones recibidas mientras la app está abierta
@@ -68,6 +74,8 @@ export function useNotifications(employeeId: string | null) {
     useEffect(() => {
         if (!employeeId) return;
 
+        console.log('[Notifications] Configurando listeners de Supabase Realtime...');
+        
         // Suscribirse a solicitudes de vehículo (vehicle_requested_at)
         const vehicleChannel = supabase
             .channel('vehicle-requests')
@@ -102,7 +110,9 @@ export function useNotifications(employeeId: string | null) {
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => {
+                console.log('[Notifications] Vehicle channel status:', status);
+            });
 
         // Suscribirse a nuevos consumos pendientes
         const consumptionChannel = supabase
@@ -117,15 +127,18 @@ export function useNotifications(employeeId: string | null) {
                 (payload) => {
                     const newItem = payload.new as any;
                     if (newItem.delivery_status === 'PENDING') {
+                        console.log('[Notifications] Enviando notificación de nuevo consumo:', newItem);
                         scheduleLocalNotification({
-                            title: '🛒 Nuevo Servicio',
+                            title: 'Nuevo Servicio',
                             body: `Hay un nuevo servicio pendiente de entrega`,
                             data: { type: 'NEW_CONSUMPTION', consumptionId: newItem.id }
                         });
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => {
+                console.log('[Notifications] Consumption channel status:', status);
+            });
 
         // Suscribirse a nuevas entradas
         const entryChannel = supabase
@@ -148,7 +161,9 @@ export function useNotifications(employeeId: string | null) {
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => {
+                console.log('[Notifications] Entry channel status:', status);
+            });
 
         return () => {
             supabase.removeChannel(vehicleChannel);
@@ -222,17 +237,21 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
 
 async function savePushToken(employeeId: string, token: string) {
     try {
+        console.log('[Notifications] Guardando token para empleado:', employeeId);
         // Guardar o actualizar el token en la tabla de empleados
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('employees')
             .update({ push_token: token, push_token_updated_at: new Date().toISOString() })
-            .eq('id', employeeId);
+            .eq('id', employeeId)
+            .select();
 
         if (error) {
-            console.error('Error saving push token:', error);
+            console.error('[Notifications] Error saving push token:', error);
+        } else {
+            console.log('[Notifications] Token guardado exitosamente:', data);
         }
     } catch (error) {
-        console.error('Error saving push token:', error);
+        console.error('[Notifications] Error saving push token:', error);
     }
 }
 
