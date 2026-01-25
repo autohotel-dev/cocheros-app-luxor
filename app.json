@@ -1,30 +1,60 @@
 {
   "expo": {
-    "name": "valet-mobile",
-    "slug": "valet-mobile",
+    "name": "Valet Luxor",
+    "slug": "valet-luxor",
+    "scheme": "valet-luxor",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "jsEngine": "hermes",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.autohotel.valet"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "package": "com.autohotel.valet"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/adaptive-icon.png",
+          "color": "#3b82f6",
+          "sounds": [],
+          "androidMode": "default",
+          "androidCollapsedTitle": "Valet Luxor"
+        }
+      ]
+    ],
+    "notification": {
+      "icon": "./assets/adaptive-icon.png",
+      "color": "#3b82f6",
+      "androidMode": "default",
+      "androidCollapsedTitle": "Valet Luxor"
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "7f5cbadd-5d02-4955-b1ad-509ce6dffe20"
+      }
+    },
+    "owner": "epigibson"
   }
 }
