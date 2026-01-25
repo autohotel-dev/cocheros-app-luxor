@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Valet Luxor",
+    "name": "Auto Hotel Luxor",
     "slug": "valet-luxor",
     "scheme": "valet-luxor",
     "version": "1.0.0",
@@ -37,7 +37,7 @@
           "color": "#3b82f6",
           "sounds": [],
           "androidMode": "default",
-          "androidCollapsedTitle": "Valet Luxor"
+          "androidCollapsedTitle": "Auto Hotel Luxor"
         }
       ]
     ],
@@ -45,7 +45,7 @@
       "icon": "./assets/adaptive-icon.png",
       "color": "#3b82f6",
       "androidMode": "default",
-      "androidCollapsedTitle": "Valet Luxor"
+      "androidCollapsedTitle": "Auto Hotel Luxor"
     },
     "extra": {
       "router": {
