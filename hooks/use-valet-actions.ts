@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Alert } from 'react-native';
+import { useFeedback } from '../contexts/feedback-context';
+
+import { PaymentEntry } from '../lib/payment-types';
 
 interface VehicleData {
     plate: string;
@@ -8,20 +10,15 @@ interface VehicleData {
     model: string;
 }
 
-interface PaymentData {
-    amount: number;
-    method: 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA';
-    reference?: string;
-}
-
 export function useValetActions(onRefresh: () => Promise<void>) {
     const [loading, setLoading] = useState(false);
+    const { showFeedback } = useFeedback();
 
     /**
      * Aceptar una entrada (asignar valet a la estancia)
      * Solo asigna el valet, no registra vehículo ni cobro
      */
-    const handleAcceptEntry = async (stayId: string, roomNumber: string, valetId: string) => {
+    const handleAcceptEntry = useCallback(async (stayId: string, roomNumber: string, valetId: string) => {
         setLoading(true);
         try {
             const { error } = await supabase
@@ -31,17 +28,17 @@ export function useValetActions(onRefresh: () => Promise<void>) {
 
             if (error) throw error;
 
-            Alert.alert('Éxito', `Te has asignado la Habitación ${roomNumber}`);
+            showFeedback('¡Éxito!', `Te has asignado la Habitación ${roomNumber}`);
             await onRefresh();
             return true;
         } catch (error: any) {
             console.error('Error accepting entry:', error);
-            Alert.alert('Error', error.message || 'Error al aceptar la entrada');
+            showFeedback('Error', error.message || 'Error al aceptar la entrada', 'error');
             return false;
         } finally {
             setLoading(false);
         }
-    };
+    }, [onRefresh, showFeedback]);
 
     /**
      * Registrar vehículo y cobro para entrada
@@ -52,12 +49,12 @@ export function useValetActions(onRefresh: () => Promise<void>) {
      * 3. Buscar payment pendiente y marcarlo como COBRADO_POR_VALET
      * 4. Notificar recepción para confirmación
      */
-    const handleRegisterVehicleAndPayment = async (
+    const handleRegisterVehicleAndPayment = useCallback(async (
         stayId: string,
         salesOrderId: string,
         roomNumber: string,
         vehicleData: VehicleData,
-        paymentData: PaymentData,
+        payments: PaymentEntry[],
         valetId: string,
         personCount: number,
         totalPeople?: number
@@ -89,7 +86,7 @@ export function useValetActions(onRefresh: () => Promise<void>) {
 
             // Si count es 0, significa que otro valet ya está asignado
             if (count === 0) {
-                Alert.alert('Entrada ya asignada', 'Otro cochero ya aceptó esta entrada.');
+                showFeedback('Entrada ya asignada', 'Otro cochero ya aceptó esta entrada.', 'warning');
                 return false;
             }
 
@@ -101,12 +98,15 @@ export function useValetActions(onRefresh: () => Promise<void>) {
                 .eq('status', 'active')
                 .maybeSingle();
 
-            // 3. El cochero NO crea un pago nuevo.
-            // Debe tomar el pago principal creado por recepción (ESTANCIA, PENDIENTE)
-            // y marcarlo como COBRADO_POR_VALET para que recepción lo confirme.
+            // 3. Registrar los pagos
+            // Si es un solo pago y es el principal, lo actualizamos.
+            // Si son múltiples, actualizamos el principal y creamos los adicionales,
+            // o simplemente los marcamos todos como COBRADO_POR_VALET.
+
+            // Primero buscamos el pago principal pendiente
             const { data: pendingMain, error: pendingMainError } = await supabase
                 .from('payments')
-                .select('id')
+                .select('id, amount')
                 .eq('sales_order_id', salesOrderId)
                 .eq('concept', 'ESTANCIA')
                 .eq('status', 'PENDIENTE')
@@ -114,54 +114,64 @@ export function useValetActions(onRefresh: () => Promise<void>) {
                 .order('created_at', { ascending: true })
                 .maybeSingle();
 
-            if (pendingMainError) {
-                console.error('Error finding pending main payment:', pendingMainError);
-                throw pendingMainError;
-            }
+            if (pendingMainError) throw pendingMainError;
 
             if (!pendingMain?.id) {
-                Alert.alert(
-                    'Sin pago pendiente',
-                    'No se encontró el pago pendiente de la estancia. Pide a recepción que genere/valide el cargo de la habitación antes de registrar el cobro.'
-                );
+                showFeedback('Sin pago pendiente', 'No se encontró el cargo de la estancia.', 'warning');
                 return false;
             }
 
-            const { error: paymentUpdateError } = await supabase
-                .from('payments')
-                .update({
-                    amount: paymentData.amount,
-                    payment_method: paymentData.method,
-                    reference: paymentData.reference || null,
-                    status: 'COBRADO_POR_VALET',
-                    payment_type: 'COMPLETO',
-                    collected_by: valetId,
-                    collected_at: new Date().toISOString(),
-                    shift_session_id: session?.id || null,
-                })
-                .eq('id', pendingMain.id);
-
-            if (paymentUpdateError) {
-                console.error('Error updating payment as COBRADO_POR_VALET:', paymentUpdateError);
-                throw paymentUpdateError;
+            // Procesar pagos
+            for (let i = 0; i < payments.length; i++) {
+                const p = payments[i];
+                if (i === 0) {
+                    // Actualizar el principal
+                    await supabase.from('payments').update({
+                        amount: p.amount,
+                        payment_method: p.method,
+                        terminal_code: p.terminal,
+                        card_last_4: p.cardLast4,
+                        card_type: p.cardType,
+                        reference: p.reference || null,
+                        status: 'COBRADO_POR_VALET',
+                        collected_by: valetId,
+                        collected_at: new Date().toISOString(),
+                        shift_session_id: session?.id || null,
+                    }).eq('id', pendingMain.id);
+                } else {
+                    // Crear pagos adicionales
+                    await supabase.from('payments').insert({
+                        sales_order_id: salesOrderId,
+                        amount: p.amount,
+                        payment_method: p.method,
+                        terminal_code: p.terminal,
+                        card_last_4: p.cardLast4,
+                        card_type: p.cardType,
+                        reference: p.reference || null,
+                        concept: 'ESTANCIA',
+                        status: 'COBRADO_POR_VALET',
+                        payment_type: 'PARCIAL',
+                        parent_payment_id: pendingMain.id,
+                        collected_by: valetId,
+                        collected_at: new Date().toISOString(),
+                        shift_session_id: session?.id || null,
+                    });
+                }
             }
 
-            const methodLabel = paymentData.method === 'EFECTIVO' ? 'el dinero' :
-                paymentData.method === 'TARJETA' ? 'el voucher' : 'el comprobante';
-
-            Alert.alert('✅ Entrada registrada', `Hab. ${roomNumber}: Lleva ${methodLabel} a recepción para confirmar`);
+            showFeedback('Entrada registrada', `Hab. ${roomNumber}: Lleva el dinero/vouchers a recepción.`);
             await onRefresh();
             return true;
         } catch (error: any) {
             console.error('Error registering vehicle and payment:', error);
-            Alert.alert('Error', error.message || 'Error al registrar entrada');
+            showFeedback('Error', error.message || 'Error al registrar entrada', 'error');
             return false;
         } finally {
             setLoading(false);
         }
-    };
+    }, [onRefresh, showFeedback]);
 
-    const handleAcceptConsumption = async (consumptionId: string, roomNumber: string, valetId: string) => {
+    const handleAcceptConsumption = useCallback(async (consumptionId: string, roomNumber: string, valetId: string) => {
         setLoading(true);
         try {
             const { error } = await supabase
@@ -174,19 +184,19 @@ export function useValetActions(onRefresh: () => Promise<void>) {
                 .eq('id', consumptionId);
 
             if (error) throw error;
-            Alert.alert('Éxito', `Entrega asignada para Hab. ${roomNumber}`);
+            showFeedback('¡Éxito!', `Entrega asignada para Hab. ${roomNumber}`);
             await onRefresh();
             return true;
         } catch (error: any) {
             console.error("Error accepting consumption:", error);
-            Alert.alert('Error', 'Error al aceptar el consumo');
+            showFeedback('Error', 'Error al aceptar el consumo', 'error');
             return false;
         } finally {
             setLoading(false);
         }
-    };
+    }, [onRefresh, showFeedback]);
 
-    const handleAcceptAllConsumptions = async (items: any[], roomNumber: string, valetId: string) => {
+    const handleAcceptAllConsumptions = useCallback(async (items: any[], roomNumber: string, valetId: string) => {
         if (items.length === 0) return false;
         setLoading(true);
         try {
@@ -201,51 +211,79 @@ export function useValetActions(onRefresh: () => Promise<void>) {
                 .in('id', itemIds);
 
             if (error) throw error;
-            Alert.alert('Éxito', `${items.length} entregas asignadas para Hab. ${roomNumber}`);
+            showFeedback('¡Éxito!', `${items.length} entregas asignadas para Hab. ${roomNumber}`);
             await onRefresh();
             return true;
         } catch (error: any) {
             console.error("Error accepting all:", error);
-            Alert.alert('Error', 'Error al aceptar los servicios');
+            showFeedback('Error', 'Error al aceptar los servicios', 'error');
             return false;
         } finally {
             setLoading(false);
         }
-    };
+    }, [onRefresh, showFeedback]);
 
-    const handleConfirmDelivery = async (consumptionId: string, roomNumber: string, tipData?: { amount: number, method: string }, notes?: string) => {
+    const handleConfirmDelivery = useCallback(async (
+        consumptionId: string,
+        roomNumber: string,
+        payments: PaymentEntry[],
+        notes?: string,
+        valetId?: string
+    ) => {
         setLoading(true);
         try {
-            const updateData: any = {
-                delivery_status: 'DELIVERED',
-                delivery_completed_at: new Date().toISOString(),
-                delivery_notes: notes || null,
-            };
+            // 1. Obtener shift actual del valet
+            const { data: session } = await supabase
+                .from('shift_sessions')
+                .select('id')
+                .eq('employee_id', valetId)
+                .eq('status', 'active')
+                .maybeSingle();
 
-            if (tipData && tipData.amount > 0) {
-                updateData.tip_amount = tipData.amount;
-                updateData.tip_method = tipData.method;
-            }
-
-            const { error } = await supabase
+            // 2. Registrar los pagos del consumo
+            const { error: updateError } = await supabase
                 .from('sales_order_items')
-                .update(updateData)
+                .update({
+                    delivery_status: 'DELIVERED',
+                    delivery_completed_at: new Date().toISOString(),
+                    delivery_notes: notes || null,
+                    is_paid: false // Reception will mark as paid when confirming valet payment
+                })
                 .eq('id', consumptionId);
 
-            if (error) throw error;
-            Alert.alert('Éxito', `Entrega confirmada en Hab. ${roomNumber}`);
+            if (updateError) throw updateError;
+
+            // 3. Crear registros de pago en la tabla payments
+            for (const p of payments) {
+                await supabase.from('payments').insert({
+                    sales_order_id: (await supabase.from('sales_order_items').select('sales_order_id').eq('id', consumptionId).single()).data?.sales_order_id,
+                    amount: p.amount,
+                    payment_method: p.method,
+                    terminal_code: p.terminal,
+                    card_last_4: p.cardLast4,
+                    card_type: p.cardType,
+                    reference: p.reference || `VALET_ITEM:${consumptionId}`,
+                    concept: 'CONSUMPTION',
+                    status: 'COBRADO_POR_VALET',
+                    collected_by: valetId,
+                    collected_at: new Date().toISOString(),
+                    shift_session_id: session?.id || null,
+                });
+            }
+
+            showFeedback('✅ Entrega Informada', `Hab. ${roomNumber}: Lleva el cobro a recepción para corroborar.`);
             await onRefresh();
             return true;
         } catch (error: any) {
             console.error("Error confirming delivery:", error);
-            Alert.alert('Error', 'Error al confirmar la entrega');
+            showFeedback('Error', 'Error al confirmar la entrega', 'error');
             return false;
         } finally {
             setLoading(false);
         }
-    };
+    }, [onRefresh, showFeedback]);
 
-    const handleCancelConsumption = async (consumptionId: string) => {
+    const handleCancelConsumption = useCallback(async (consumptionId: string) => {
         setLoading(true);
         try {
             const { error } = await supabase
@@ -261,46 +299,85 @@ export function useValetActions(onRefresh: () => Promise<void>) {
             return true;
         } catch (error: any) {
             console.error("Error cancelling:", error);
-            Alert.alert('Error', 'Error al cancelar');
+            showFeedback('Error', 'Error al cancelar', 'error');
             return false;
         } finally {
             setLoading(false);
         }
-    };
+    }, [onRefresh, showFeedback]);
 
     /**
      * Confirmar todas las entregas de una habitación
      * Solo confirma items que estén en estado IN_TRANSIT
      */
-    const handleConfirmAllDeliveries = async (items: any[], roomNumber: string) => {
+    const handleConfirmAllDeliveries = useCallback(async (
+        items: any[],
+        roomNumber: string,
+        payments: PaymentEntry[],
+        notes?: string,
+        valetId?: string
+    ) => {
         if (items.length === 0) return false;
         setLoading(true);
         try {
-            const itemIds = items.map(item => item.id);
+            // 1. Obtener shift actual
+            const { data: session } = await supabase
+                .from('shift_sessions')
+                .select('id')
+                .eq('employee_id', valetId)
+                .eq('status', 'active')
+                .maybeSingle();
 
+            const itemIds = items.map(item => item.id);
+            const salesOrderIds = [...new Set(items.map(i => i.sales_order_id))];
+
+            // 2. Actualizar items
             const { error } = await supabase
                 .from('sales_order_items')
                 .update({
                     delivery_status: 'DELIVERED',
-                    delivery_completed_at: new Date().toISOString()
+                    delivery_completed_at: new Date().toISOString(),
+                    delivery_notes: notes || null,
+                    is_paid: false // Reception will mark as paid when confirming valet payment
                 })
                 .in('id', itemIds);
 
             if (error) throw error;
 
-            Alert.alert('Éxito', `${items.length} entregas confirmadas en Hab. ${roomNumber}`);
+            // 3. Registrar pagos
+            const mainOrderId = salesOrderIds[0];
+
+            const itemsRef = itemIds.length > 1 ? `VALET_BATCH:${itemIds.length}` : `VALET_ITEM:${itemIds[0]}`;
+            for (const p of payments) {
+                await supabase.from('payments').insert({
+                    sales_order_id: mainOrderId,
+                    amount: p.amount,
+                    payment_method: p.method,
+                    terminal_code: p.terminal,
+                    card_last_4: p.cardLast4,
+                    card_type: p.cardType,
+                    reference: p.reference || itemsRef,
+                    concept: 'CONSUMPTION',
+                    status: 'COBRADO_POR_VALET',
+                    collected_by: valetId,
+                    collected_at: new Date().toISOString(),
+                    shift_session_id: session?.id || null,
+                });
+            }
+
+            showFeedback('✅ Entregas Informadas', `Hab. ${roomNumber}: ${items.length} servicios informados. Corrobora los cobros en recepción.`);
             await onRefresh();
             return true;
         } catch (error: any) {
             console.error("Error confirming all deliveries:", error);
-            Alert.alert('Error', 'Error al confirmar las entregas');
+            showFeedback('Error', 'Error al confirmar las entregas', 'error');
             return false;
         } finally {
             setLoading(false);
         }
-    };
+    }, [onRefresh, showFeedback]);
 
-    const handleConfirmCheckout = async (stayId: string, roomNumber: string, valetId: string, personCount: number) => {
+    const handleConfirmCheckout = useCallback(async (stayId: string, roomNumber: string, valetId: string, personCount: number) => {
         setLoading(true);
         try {
             const { error } = await supabase
@@ -313,41 +390,239 @@ export function useValetActions(onRefresh: () => Promise<void>) {
 
             if (error) throw error;
 
-            Alert.alert('Éxito', `Hab. ${roomNumber}: Revisión completada.`);
+            showFeedback('¡Éxito!', `Hab. ${roomNumber}: Revisión completada.`);
             await onRefresh();
             return true;
         } catch (error: any) {
             console.error('Error confirming checkout:', error);
-            Alert.alert('Error', 'Error al confirmar salida');
+            showFeedback('Error', 'Error al confirmar salida', 'error');
             return false;
         } finally {
             setLoading(false);
         }
-    };
+    }, [onRefresh, showFeedback]);
 
-    const handleProposeCheckout = async (stayId: string, roomNumber: string, valetId: string) => {
+    const handleProposeCheckout = useCallback(async (stayId: string, roomNumber: string, valetId: string) => {
         setLoading(true);
         try {
             const { error } = await supabase
                 .from('room_stays')
                 .update({
                     valet_checkout_requested_at: new Date().toISOString(),
-                    valet_employee_id: valetId // Usar el mismo si ya existe o el actual
+                    checkout_valet_employee_id: valetId
                 })
                 .eq('id', stayId);
 
             if (error) throw error;
-            Alert.alert('Éxito', `Hab. ${roomNumber}: Salida notificada correctamente.`);
+            showFeedback('¡Éxito!', `Hab. ${roomNumber}: Salida notificada correctamente.`);
             await onRefresh();
             return true;
         } catch (error: any) {
             console.error('Error proposing checkout:', error);
-            Alert.alert('Error', 'Error al notificar salida');
+            showFeedback('Error', 'Error al notificar salida', 'error');
             return false;
         } finally {
             setLoading(false);
         }
-    };
+    }, [onRefresh, showFeedback]);
+
+    /**
+     * Reportar un daño encontrado durante la revisión
+     */
+    const handleReportDamage = useCallback(async (
+        stayId: string,
+        salesOrderId: string,
+        roomNumber: string,
+        description: string,
+        amount: number,
+        payments: PaymentEntry[],
+        valetId: string
+    ) => {
+        setLoading(true);
+        try {
+            const { data: session } = await supabase
+                .from('shift_sessions')
+                .select('id')
+                .eq('employee_id', valetId)
+                .eq('status', 'active')
+                .maybeSingle();
+
+            const { data: item, error: itemError } = await supabase
+                .from('sales_order_items')
+                .insert({
+                    sales_order_id: salesOrderId,
+                    concept_type: 'DAMAGE_CHARGE',
+                    description: `DAÑO: ${description}`,
+                    unit_price: amount,
+                    qty: 1,
+                    total: amount,
+                    is_paid: false
+                })
+                .select()
+                .single();
+
+            if (itemError) throw itemError;
+
+            for (const p of payments) {
+                await supabase.from('payments').insert({
+                    sales_order_id: salesOrderId,
+                    amount: p.amount,
+                    payment_method: p.method,
+                    terminal_code: p.terminal,
+                    card_last_4: p.cardLast4,
+                    card_type: p.cardType,
+                    reference: p.reference || `VALET_DAMAGE:${item?.id}`,
+                    concept: 'DAMAGE_CHARGE',
+                    status: 'COBRADO_POR_VALET',
+                    collected_by: valetId,
+                    collected_at: new Date().toISOString(),
+                    shift_session_id: session?.id || null,
+                });
+            }
+
+            showFeedback('✅ Daño Informado', `Hab. ${roomNumber}: Cargo por $${amount.toFixed(2)} generado. Corrobora el cobro en recepción.`);
+            await onRefresh();
+            return true;
+        } catch (error: any) {
+            console.error('Error reporting damage:', error);
+            showFeedback('Error', 'No se pudo registrar el daño.', 'error');
+            return false;
+        } finally {
+            setLoading(false);
+        }
+    }, [onRefresh, showFeedback]);
+
+    /**
+     * Registrar una hora extra informada por el valet
+     */
+    const handleRegisterExtraHour = useCallback(async (
+        salesOrderId: string,
+        roomNumber: string,
+        amount: number,
+        payments: PaymentEntry[],
+        valetId: string
+    ) => {
+        setLoading(true);
+        try {
+            const { data: session } = await supabase
+                .from('shift_sessions')
+                .select('id')
+                .eq('employee_id', valetId)
+                .eq('status', 'active')
+                .maybeSingle();
+
+            // 1. Crear el item en sales_order_items
+            const { data: item, error: itemError } = await supabase
+                .from('sales_order_items')
+                .insert({
+                    sales_order_id: salesOrderId,
+                    concept_type: 'EXTRA_HOUR',
+                    description: 'HORA EXTRA (VALET)',
+                    unit_price: amount,
+                    qty: 1,
+                    total: amount,
+                    is_paid: false
+                })
+                .select()
+                .single();
+
+            if (itemError) throw itemError;
+
+            // 2. Registrar el pago
+            for (const p of payments) {
+                await supabase.from('payments').insert({
+                    sales_order_id: salesOrderId,
+                    amount: p.amount,
+                    payment_method: p.method,
+                    terminal_code: p.terminal,
+                    card_last_4: p.cardLast4,
+                    card_type: p.cardType,
+                    reference: p.reference || `VALET_HOUR:${item?.id}`,
+                    concept: 'HORA_EXTRA',
+                    status: 'COBRADO_POR_VALET',
+                    collected_by: valetId,
+                    collected_at: new Date().toISOString(),
+                    shift_session_id: session?.id || null,
+                });
+            }
+
+            showFeedback('✅ Hora Extra Informada', `Hab. ${roomNumber}: Cobro registrado. Entrega el dinero en recepción.`);
+            await onRefresh();
+            return true;
+        } catch (error: any) {
+            console.error('Error registering extra hour:', error);
+            showFeedback('Error', 'No se pudo registrar la hora extra.', 'error');
+            return false;
+        } finally {
+            setLoading(false);
+        }
+    }, [onRefresh, showFeedback]);
+
+    /**
+     * Registrar una persona extra informada por el valet
+     */
+    const handleRegisterExtraPerson = useCallback(async (
+        salesOrderId: string,
+        roomNumber: string,
+        amount: number,
+        payments: PaymentEntry[],
+        valetId: string
+    ) => {
+        setLoading(true);
+        try {
+            const { data: session } = await supabase
+                .from('shift_sessions')
+                .select('id')
+                .eq('employee_id', valetId)
+                .eq('status', 'active')
+                .maybeSingle();
+
+            // 1. Crear el item en sales_order_items
+            const { data: item, error: itemError } = await supabase
+                .from('sales_order_items')
+                .insert({
+                    sales_order_id: salesOrderId,
+                    concept_type: 'EXTRA_PERSON',
+                    description: 'PERSONA EXTRA (VALET)',
+                    unit_price: amount,
+                    qty: 1,
+                    total: amount,
+                    is_paid: false
+                })
+                .select()
+                .single();
+
+            if (itemError) throw itemError;
+
+            // 2. Registrar el pago
+            for (const p of payments) {
+                await supabase.from('payments').insert({
+                    sales_order_id: salesOrderId,
+                    amount: p.amount,
+                    payment_method: p.method,
+                    terminal_code: p.terminal,
+                    card_last_4: p.cardLast4,
+                    card_type: p.cardType,
+                    reference: p.reference || `VALET_PERSON:${item?.id}`,
+                    concept: 'PERSONA_EXTRA',
+                    status: 'COBRADO_POR_VALET',
+                    collected_by: valetId,
+                    collected_at: new Date().toISOString(),
+                    shift_session_id: session?.id || null,
+                });
+            }
+
+            showFeedback('✅ Persona Extra Informada', `Hab. ${roomNumber}: Cobro registrado. Entrega el dinero en recepción.`);
+            await onRefresh();
+            return true;
+        } catch (error: any) {
+            console.error('Error registering extra person:', error);
+            showFeedback('Error', 'No se pudo registrar la persona extra.', 'error');
+            return false;
+        } finally {
+            setLoading(false);
+        }
+    }, [onRefresh, showFeedback]);
 
     return {
         loading,
@@ -360,5 +635,8 @@ export function useValetActions(onRefresh: () => Promise<void>) {
         handleConfirmDelivery,
         handleConfirmAllDeliveries,
         handleCancelConsumption,
+        handleReportDamage,
+        handleRegisterExtraHour,
+        handleRegisterExtraPerson,
     };
 }

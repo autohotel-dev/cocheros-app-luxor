@@ -27,67 +27,68 @@ export default function ProfileScreen() {
     };
 
     return (
-        <View className={`flex-1 p-6 ${isDark ? 'bg-slate-900' : 'bg-slate-50'}`}>
-            <View className={`p-8 rounded-[40px] shadow-sm border items-center ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                <View className={`w-24 h-24 rounded-full items-center justify-center mb-6 ${isDark ? 'bg-blue-900' : 'bg-blue-100'}`}>
-                    <User color="#2563eb" size={48} />
-                </View>
-                <Text className={`text-2xl font-bold text-center ${isDark ? 'text-white' : 'text-slate-800'}`}>{employeeName}</Text>
-                <View className={`px-4 py-1 rounded-full mt-2 ${isDark ? 'bg-blue-900' : 'bg-blue-50'}`}>
-                    <Text className="text-blue-500 font-bold uppercase text-xs">{role}</Text>
+        <View className={`flex-1 p-6 ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}>
+            <View className={`p-10 rounded-[48px] shadow-2xl border-2 items-center ${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-100'}`}>
+                <View className={`w-28 h-28 rounded-3xl items-center justify-center mb-8 shadow-xl ${isDark ? 'bg-black' : 'bg-zinc-50'}`}>
+                    <User color={isDark ? '#e4e4e7' : '#18181b'} size={48} strokeWidth={2.5} />
                 </View>
 
-                <View className="w-full mt-8 gap-3">
-                    <View className={`flex-row items-center p-4 rounded-2xl ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                        <Mail color={isDark ? '#94a3b8' : '#64748b'} size={20} />
-                        <Text className={`ml-4 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{userEmail}</Text>
+                <Text className={`text-3xl font-black text-center tracking-tight ${isDark ? 'text-white' : 'text-zinc-900'}`}>{employeeName}</Text>
+
+                <View className={`px-4 py-1.5 rounded-full mt-4 border-2 ${isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-900 border-zinc-900'}`}>
+                    <Text className={`font-black uppercase text-[10px] tracking-[0.2em] ${isDark ? 'text-zinc-400' : 'text-zinc-50'}`}>{role}</Text>
+                </View>
+
+                <View className="w-full mt-12 gap-4">
+                    <View className={`flex-row items-center p-5 rounded-2xl border-2 ${isDark ? 'bg-black border-zinc-800' : 'bg-zinc-50 border-zinc-100'}`}>
+                        <Mail color={isDark ? '#52525b' : '#a1a1aa'} size={20} />
+                        <Text className={`ml-4 font-bold ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>{userEmail}</Text>
                     </View>
-                    <View className={`flex-row items-center p-4 rounded-2xl ${isDark ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                        <Shield color={isDark ? '#94a3b8' : '#64748b'} size={20} />
-                        <Text className={`ml-4 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Acceso Cochero</Text>
+                    <View className={`flex-row items-center p-5 rounded-2xl border-2 ${isDark ? 'bg-black border-zinc-800' : 'bg-zinc-50 border-zinc-100'}`}>
+                        <Shield color={isDark ? '#52525b' : '#a1a1aa'} size={20} />
+                        <Text className={`ml-4 font-bold ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Acceso Cochero</Text>
                     </View>
                 </View>
 
                 {/* Selector de Tema */}
-                <View className="w-full mt-6">
-                    <Text className={`text-sm font-semibold mb-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Apariencia</Text>
-                    <View className={`flex-row rounded-2xl p-1 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                <View className="w-full mt-10">
+                    <Text className={`text-[10px] font-black uppercase tracking-widest mb-4 ml-1 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Preferencia Visual</Text>
+                    <View className={`flex-row rounded-3xl p-1.5 border-2 ${isDark ? 'bg-black border-zinc-800' : 'bg-zinc-100 border-zinc-200'}`}>
                         <TouchableOpacity
                             onPress={() => setThemeMode('light')}
-                            className={`flex-1 flex-row items-center justify-center py-3 rounded-xl ${themeMode === 'light' ? (isDark ? 'bg-slate-600' : 'bg-white shadow-sm') : ''}`}
+                            className={`flex-1 flex-row items-center justify-center py-4 rounded-2xl ${themeMode === 'light' ? (isDark ? 'bg-zinc-800' : 'bg-white shadow-xl') : ''}`}
                         >
-                            <Sun color={themeMode === 'light' ? '#f59e0b' : (isDark ? '#64748b' : '#94a3b8')} size={18} />
-                            <Text className={`ml-2 font-medium text-sm ${themeMode === 'light' ? (isDark ? 'text-white' : 'text-slate-800') : (isDark ? 'text-slate-400' : 'text-slate-500')}`}>Claro</Text>
+                            <Sun color={themeMode === 'light' ? '#fbbf24' : (isDark ? '#3f3f46' : '#d4d4d8')} size={18} strokeWidth={3} />
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={() => setThemeMode('dark')}
-                            className={`flex-1 flex-row items-center justify-center py-3 rounded-xl ${themeMode === 'dark' ? (isDark ? 'bg-slate-600' : 'bg-white shadow-sm') : ''}`}
+                            className={`flex-1 flex-row items-center justify-center py-4 rounded-2xl ${themeMode === 'dark' ? (isDark ? 'bg-zinc-800 shadow-lg' : 'bg-white shadow-xl') : ''}`}
                         >
-                            <Moon color={themeMode === 'dark' ? '#8b5cf6' : (isDark ? '#64748b' : '#94a3b8')} size={18} />
-                            <Text className={`ml-2 font-medium text-sm ${themeMode === 'dark' ? (isDark ? 'text-white' : 'text-slate-800') : (isDark ? 'text-slate-400' : 'text-slate-500')}`}>Oscuro</Text>
+                            <Moon color={themeMode === 'dark' ? '#818cf8' : (isDark ? '#3f3f46' : '#d4d4d8')} size={18} strokeWidth={3} />
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={() => setThemeMode('system')}
-                            className={`flex-1 flex-row items-center justify-center py-3 rounded-xl ${themeMode === 'system' ? (isDark ? 'bg-slate-600' : 'bg-white shadow-sm') : ''}`}
+                            className={`flex-1 flex-row items-center justify-center py-4 rounded-2xl ${themeMode === 'system' ? (isDark ? 'bg-zinc-800 shadow-lg' : 'bg-white shadow-xl') : ''}`}
                         >
-                            <Smartphone color={themeMode === 'system' ? '#3b82f6' : (isDark ? '#64748b' : '#94a3b8')} size={18} />
-                            <Text className={`ml-2 font-medium text-sm ${themeMode === 'system' ? (isDark ? 'text-white' : 'text-slate-800') : (isDark ? 'text-slate-400' : 'text-slate-500')}`}>Auto</Text>
+                            <Smartphone color={themeMode === 'system' ? '#a1a1aa' : (isDark ? '#3f3f46' : '#d4d4d8')} size={18} strokeWidth={3} />
                         </TouchableOpacity>
                     </View>
                 </View>
 
                 <TouchableOpacity
                     onPress={handleLogout}
-                    className={`flex-row items-center justify-center w-full h-16 rounded-2xl mt-8 border ${isDark ? 'bg-red-900/30 border-red-800' : 'bg-red-50 border-red-100'}`}
+                    className={`flex-row items-center justify-center w-full h-16 rounded-2xl mt-12 border-2 ${isDark ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-100'}`}
                 >
-                    <LogOut color="#ef4444" size={20} />
-                    <Text className="ml-2 text-red-500 font-bold text-lg">Cerrar Sesión</Text>
+                    <LogOut color="#ef4444" size={20} strokeWidth={3} />
+                    <Text className="ml-3 text-red-500 font-black uppercase tracking-widest text-xs">Finalizar Sesión</Text>
                 </TouchableOpacity>
             </View>
 
-            <Text className={`text-center text-xs mt-auto pb-6 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                Luxor Manager Mobile v1.0.0
-            </Text>
+            <View className="mt-auto items-center pb-8">
+                <Text className={`text-[10px] font-black uppercase tracking-[0.3em] ${isDark ? 'text-zinc-800' : 'text-zinc-300'}`}>
+                    AHLM v2.0 • LUXOR
+                </Text>
+            </View>
         </View>
     );
 }

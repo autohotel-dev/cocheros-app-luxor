@@ -4,27 +4,27 @@ import { useTheme } from '../../contexts/theme-context';
 
 export default function TabLayout() {
     const { isDark } = useTheme();
-    
+
     return (
         <Tabs screenOptions={{
-            tabBarActiveTintColor: '#3b82f6',
-            tabBarInactiveTintColor: isDark ? '#64748b' : '#94a3b8',
+            tabBarActiveTintColor: isDark ? '#ffffff' : '#09090b',
+            tabBarInactiveTintColor: isDark ? '#71717a' : '#a1a1aa',
             tabBarStyle: {
-                backgroundColor: isDark ? '#1e293b' : '#ffffff',
-                borderTopColor: isDark ? '#334155' : '#e2e8f0',
+                backgroundColor: isDark ? '#09090b' : '#fafafa',
+                borderTopColor: isDark ? '#27272a' : '#e4e4e7',
                 borderTopWidth: 1,
             },
             headerShown: true,
-            headerStyle: { 
-                backgroundColor: isDark ? '#1e293b' : '#ffffff',
-                borderBottomWidth: 1, 
-                borderBottomColor: isDark ? '#334155' : '#e2e8f0',
+            headerStyle: {
+                backgroundColor: isDark ? '#09090b' : '#fafafa',
+                borderBottomWidth: 1,
+                borderBottomColor: isDark ? '#27272a' : '#e4e4e7',
             },
-            headerTitleStyle: { 
+            headerTitleStyle: {
                 fontWeight: 'bold',
-                color: isDark ? '#ffffff' : '#1e293b',
+                color: isDark ? '#ffffff' : '#09090b',
             },
-            headerTintColor: isDark ? '#ffffff' : '#1e293b',
+            headerTintColor: isDark ? '#ffffff' : '#09090b',
         }}>
             <Tabs.Screen
                 name="index"

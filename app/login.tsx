@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, useColorScheme } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { LogIn } from 'lucide-react-native';
+import { ShieldCheck } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { useFeedback } from '../contexts/feedback-context';
 
 export default function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+    const isDark = useColorScheme() === 'dark';
+    const { showFeedback } = useFeedback();
 
     const handleLogin = async () => {
-        console.log("Intentando iniciar sesión con:", email);
         if (!email || !password) {
-            Alert.alert('Error', 'Por favor ingresa correo y contraseña');
+            showFeedback('Datos incompletos', 'Por favor ingresa correo y contraseña', 'warning');
             return;
         }
 
@@ -25,16 +27,12 @@ export default function LoginScreen() {
             });
 
             if (error) {
-                console.error("Error de Supabase:", error);
-                Alert.alert('Error de inicio de sesión', error.message);
+                showFeedback('Error de acceso', error.message, 'error');
             } else {
-                console.log("Login exitoso:", data.user?.email);
-                // Manual redirect as fallback if RootLayout fails
                 router.replace('/(tabs)');
             }
         } catch (err: any) {
-            console.error("Error inesperado:", err);
-            Alert.alert('Error', 'Ocurrió un error inesperado al intentar entrar.');
+            showFeedback('Error', 'Ocurrió un error inesperado al intentar entrar.', 'error');
         } finally {
             setLoading(false);
         }
@@ -43,37 +41,39 @@ export default function LoginScreen() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            className="flex-1 bg-white"
+            className={`flex-1 ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}
         >
-            <View className="flex-1 justify-center px-8">
-                <View className="items-center mb-12">
-                    <View className="w-24 h-24 bg-blue-600 rounded-3xl items-center justify-center shadow-lg">
-                        <LogIn color="white" size={48} />
+            <View className="flex-1 justify-center px-10">
+                <View className="items-center mb-16">
+                    <View className={`w-24 h-24 rounded-3xl items-center justify-center shadow-2xl ${isDark ? 'bg-white' : 'bg-zinc-900'}`}>
+                        <ShieldCheck color={isDark ? '#000' : '#fff'} size={48} strokeWidth={2.5} />
                     </View>
-                    <Text className="text-3xl font-bold mt-6 text-slate-800">Luxor Cocheros</Text>
-                    <Text className="text-slate-500 mt-2">Gestión de Estacionamiento</Text>
+                    <Text className={`text-4xl font-black mt-8 tracking-tighter ${isDark ? 'text-white' : 'text-zinc-900'}`}>LUXOR</Text>
+                    <Text className={`text-xs font-black uppercase tracking-[0.3em] mt-2 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Sistema de Cocheros</Text>
                 </View>
 
-                <View className="space-y-4">
+                <View className="gap-5">
                     <View>
-                        <Text className="text-sm font-medium text-slate-700 mb-1 ml-1">Correo Electrónico</Text>
+                        <Text className={`text-[10px] font-black uppercase tracking-widest mb-2 ml-1 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Correo Electrónico</Text>
                         <TextInput
                             value={email}
                             onChangeText={setEmail}
-                            placeholder="correo@ejemplo.com"
-                            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800"
+                            placeholder="usuario@autohotelluxor.com"
+                            placeholderTextColor={isDark ? '#3f3f46' : '#d4d4d8'}
+                            className={`border-2 rounded-2xl px-5 py-4 font-bold text-lg ${isDark ? 'bg-black border-zinc-800 text-white' : 'bg-white border-zinc-100 text-zinc-900'}`}
                             autoCapitalize="none"
                             keyboardType="email-address"
                         />
                     </View>
 
-                    <View className="mt-4">
-                        <Text className="text-sm font-medium text-slate-700 mb-1 ml-1">Contraseña</Text>
+                    <View>
+                        <Text className={`text-[10px] font-black uppercase tracking-widest mb-2 ml-1 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Contraseña</Text>
                         <TextInput
                             value={password}
                             onChangeText={setPassword}
                             placeholder="••••••••"
-                            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800"
+                            placeholderTextColor={isDark ? '#3f3f46' : '#d4d4d8'}
+                            className={`border-2 rounded-2xl px-5 py-4 font-bold text-lg ${isDark ? 'bg-black border-zinc-800 text-white' : 'bg-white border-zinc-100 text-zinc-900'}`}
                             secureTextEntry
                         />
                     </View>
@@ -81,14 +81,18 @@ export default function LoginScreen() {
                     <TouchableOpacity
                         onPress={handleLogin}
                         disabled={loading}
-                        className="bg-blue-600 rounded-xl h-14 items-center justify-center mt-8 shadow-sm active:bg-blue-700"
+                        className={`rounded-2xl h-16 items-center justify-center mt-6 shadow-xl ${isDark ? 'bg-white' : 'bg-zinc-900'}`}
                     >
                         {loading ? (
-                            <ActivityIndicator color="white" />
+                            <ActivityIndicator color={isDark ? 'black' : 'white'} />
                         ) : (
-                            <Text className="text-white font-bold text-lg">Entrar</Text>
+                            <Text className={`font-black uppercase tracking-widest ${isDark ? 'text-zinc-900' : 'text-white'}`}>Entrar al Turno</Text>
                         )}
                     </TouchableOpacity>
+                </View>
+
+                <View className="absolute bottom-12 left-0 right-0 items-center">
+                    <Text className={`text-[10px] font-bold ${isDark ? 'text-zinc-700' : 'text-zinc-300'}`}>AHLM v2.0 • LUXOR MANAGER</Text>
                 </View>
             </View>
         </KeyboardAvoidingView>
