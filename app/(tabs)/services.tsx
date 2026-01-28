@@ -5,8 +5,11 @@ import { useUserRole } from '../../hooks/use-user-role';
 import { useValetActions } from '../../hooks/use-valet-actions';
 import { useTheme } from '../../contexts/theme-context';
 import { ShoppingBag, CheckCircle2, XCircle, ChevronDown, ChevronUp, Banknote, CreditCard, MessageSquare, X, AlertCircle, Plus, Minus } from 'lucide-react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { MultiPaymentInput } from '../../components/MultiPaymentInput';
 import { PaymentEntry } from '../../lib/payment-types';
+import * as Haptics from 'expo-haptics';
+import { Skeleton } from '../../components/Skeleton';
 
 export default function ServicesScreen() {
     const { employeeId, hasActiveShift, isLoading: roleLoading } = useUserRole();
@@ -75,18 +78,59 @@ export default function ServicesScreen() {
         fetchData();
         const channel = supabase.channel('valet-services-realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_order_items' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'room_stays' }, () => fetchData())
             .subscribe();
         return () => { supabase.removeChannel(channel); };
     }, [fetchData]);
 
+    // Auto-expand room from Deep Link
+    const params = useLocalSearchParams();
+    useEffect(() => {
+        if (params.salesOrderId && (pendingConsumptions.length > 0 || myConsumptions.length > 0)) {
+            // Buscar la habitación asociada a esta orden
+            const allItems = [...pendingConsumptions, ...myConsumptions];
+            const item = allItems.find(i => i.sales_order_id === params.salesOrderId);
+            if (item) {
+                const roomNum = item.sales_orders?.room_stays[0]?.rooms?.number;
+                if (roomNum) {
+                    setExpandedRooms(prev => {
+                        const next = new Set(prev);
+                        // Intentar expandir tanto en "Mis Entregas" como en "Pendientes" si aplica
+                        next.add(roomNum);
+                        next.add(`my-${roomNum}`);
+                        return next;
+                    });
+                }
+            }
+        }
+    }, [params.salesOrderId, pendingConsumptions, myConsumptions]);
+
     const {
-        handleAcceptConsumption,
-        handleAcceptAllConsumptions,
+        handleAcceptConsumption: originalHandleAcceptConsumption,
+        handleAcceptAllConsumptions: originalHandleAcceptAllConsumptions,
         handleConfirmDelivery,
         handleConfirmAllDeliveries,
         handleCancelConsumption,
         loading: actionLoading
     } = useValetActions(fetchData);
+
+    const handleAcceptConsumption = async (id: string, roomNum: string, empId: string) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        // Optimistic update
+        setPendingConsumptions(prev => prev.filter(item => item.id !== id));
+        const success = await originalHandleAcceptConsumption(id, roomNum, empId);
+        if (!success) fetchData(); // Rollback if failed
+    };
+
+    const handleAcceptAllConsumptions = async (items: any[], roomNum: string, empId: string) => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // Optimistic update
+        const itemIds = items.map(i => i.id);
+        setPendingConsumptions(prev => prev.filter(item => !itemIds.includes(item.id)));
+        const success = await originalHandleAcceptAllConsumptions(items, roomNum, empId);
+        if (!success) fetchData(); // Rollback
+    };
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -94,6 +138,7 @@ export default function ServicesScreen() {
     };
 
     const toggleExpand = (roomNum: string) => {
+        Haptics.selectionAsync();
         setExpandedRooms(prev => {
             const next = new Set(prev);
             if (next.has(roomNum)) next.delete(roomNum);
@@ -103,6 +148,7 @@ export default function ServicesScreen() {
     };
 
     const openConfirmModal = (items: any | any[]) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         const itemsArray = Array.isArray(items) ? items : [items];
         setSelectedItems(itemsArray);
         const total = itemsArray.reduce((sum, item) => sum + Number(item.total || 0), 0);
@@ -159,7 +205,23 @@ export default function ServicesScreen() {
     }, {});
 
     if (loading || roleLoading) {
-        return <View className={`flex-1 items-center justify-center ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}><ActivityIndicator size="large" color="#a1a1aa" /></View>;
+        return (
+            <View className={`flex-1 ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}>
+                <View className="p-6 pt-12">
+                    <Skeleton width={180} height={24} borderRadius={12} style={{ marginBottom: 20 }} />
+                    <View className="space-y-4">
+                        {[1, 2, 3].map(i => (
+                            <View key={i} className={`p-5 rounded-2xl border ${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-100'}`}>
+                                <View className="flex-row justify-between items-center">
+                                    <Skeleton width={120} height={20} borderRadius={10} />
+                                    <Skeleton width={20} height={20} borderRadius={10} />
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                </View>
+            </View>
+        );
     }
 
     return (

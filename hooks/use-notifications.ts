@@ -1,26 +1,84 @@
 import { useState, useEffect, useRef } from 'react';
-import { Platform, Alert } from 'react-native';
+import { Platform, Alert, AppState } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
 import { router } from 'expo-router';
 
+// Cache global para evitar duplicados entre Realtime y Push
+const processedNotificationsMap: { [key: string]: number } = {};
+// Mantener referencia al canal activo para evitar duplicados
+let globalSystemNotifChannel: any = null;
+let currentSubscribedUserId: string | null = null;
+
+/**
+ * Normaliza los IDs de negocio para de-duplicar correctamente.
+ * Prioriza IDs de estancia, orden o consumo sobre el ID técnico de la notificación.
+ * Soporta snake_case (web) y camelCase (push/mobile).
+ */
+const getNormalizedId = (data: any) => {
+    if (!data) return null;
+    // Buscar en todas las variantes posibles de nombres de campos
+    const id = (
+        data.stay_id || data.stayId ||
+        data.sales_order_id || data.salesOrderId ||
+        data.consumption_id || data.consumptionId ||
+        data.id
+    );
+    return id ? String(id) : null;
+};
+
+// Helper para evitar duplicados con ventana de 20 segundos para ser más conservadores
+const shouldNotifyGlobal = (type: string, id: string | undefined) => {
+    if (!id) return true;
+    const key = `${type}:${id}`;
+    const now = Date.now();
+    const lastTime = processedNotificationsMap[key];
+
+    if (lastTime && (now - lastTime < 20000)) {
+        console.log(`[Notifications] BLOQUEADO duplicado: ${key} (Hace ${Math.round((now - lastTime) / 1000)}s)`);
+        return false;
+    }
+
+    processedNotificationsMap[key] = now;
+    return true;
+};
+
 // Configurar cómo se muestran las notificaciones cuando la app está en primer plano
 Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
+    handleNotification: async (notification) => {
+        const data = notification.request.content.data as any;
+        const msgId = getNormalizedId(data);
+        const type = data.type || 'SYSTEM';
+
+        // Si ya procesamos esto por Realtime recientemente, silenciamos el Push por completo
+        if (msgId && !shouldNotifyGlobal(type, msgId)) {
+            return {
+                shouldPlaySound: false,
+                shouldSetBadge: false,
+                shouldShowAlert: false,
+                shouldShowBanner: false,
+                shouldShowList: false,
+            };
+        }
+
+        return {
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+            shouldShowAlert: true,
+            shouldShowBanner: true,
+            shouldShowList: true,
+        };
+    },
 });
 
 export interface NotificationData {
-    type?: 'VEHICLE_REQUEST' | 'NEW_CONSUMPTION' | 'NEW_ENTRY' | 'CHECKOUT_REQUEST' | 'GENERAL';
+    type?: 'VEHICLE_REQUEST' | 'NEW_CONSUMPTION' | 'NEW_ENTRY' | 'CHECKOUT_REQUEST' | 'GENERAL' | 'REGULAR_CONSUMPTION' | 'NEW_EXTRA';
     roomNumber?: string;
     stayId?: string;
     consumptionId?: string;
+    salesOrderId?: string;
     message?: string;
     [key: string]: unknown;
 }
@@ -69,127 +127,81 @@ export function useNotifications(employeeId: string | null) {
         };
     }, [employeeId]);
 
-    const processedNotifications = useRef<{ [key: string]: number }>({});
-
     // Suscribirse a cambios en tiempo real de Supabase para notificaciones
     useEffect(() => {
         if (!employeeId) return;
 
-        console.log('[Notifications] Configurando listeners de Supabase Realtime...');
+        let isMounted = true;
 
-        // Helper para evitar duplicados
-        const shouldNotify = (key: string) => {
-            const now = Date.now();
-            const lastTime = processedNotifications.current[key];
-            if (lastTime && (now - lastTime < 10000)) { // 10 segundos de debounce
-                console.log(`[Notifications] Ignorando duplicado: ${key}`);
-                return false;
+        const setupRealtime = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!isMounted || !user) return;
+
+            const authUserId = user.id;
+
+            // Si el canal ya existe para este usuario, no hacemos nada
+            if (globalSystemNotifChannel && currentSubscribedUserId === authUserId) {
+                console.log('[Notifications] Canal activo y válido, manteniendo suscripción.');
+                return;
             }
-            processedNotifications.current[key] = now;
-            return true;
+
+            // Si el canal existía para otro usuario o está muerto, lo limpiamos
+            if (globalSystemNotifChannel) {
+                console.log('[Notifications] Limpiando canal anterior antes de re-suscripción');
+                supabase.removeChannel(globalSystemNotifChannel);
+                globalSystemNotifChannel = null;
+            }
+
+            console.log('[Notifications] Creando suscripción Realtime filtrada para:', authUserId);
+            currentSubscribedUserId = authUserId;
+
+            globalSystemNotifChannel = supabase
+                .channel(`system-notifications-${authUserId}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'notifications',
+                        filter: `user_id=eq.${authUserId}`
+                    },
+                    (payload) => {
+                        const newNotif = payload.new as any;
+                        const businessId = getNormalizedId(newNotif.data) || newNotif.id;
+                        const type = newNotif.data?.type || 'SYSTEM';
+
+                        console.log(`[Notifications] Evento Realtime recibido: ${type}:${businessId}`);
+
+                        // SOLO NOTIFICAR LOCALMENTE SI LA APP ESTÁ EN PRIMER PLANO
+                        // Si la app está en segundo plano, confiamos en la notificación Push del sistema
+                        if (AppState.currentState === 'active' && shouldNotifyGlobal(type, businessId)) {
+                            console.log(`[Notifications] -> Lanzando alerta local (App Activa): ${newNotif.title} para ID:${businessId}`);
+                            scheduleLocalNotification({
+                                identifier: businessId, // USAR ID ESTABLE para que reemplace si llega otro igual
+                                title: newNotif.title || 'Nueva Notificación',
+                                body: newNotif.message || '',
+                                data: { ...newNotif.data, type, id: businessId }
+                            });
+                        } else if (AppState.currentState !== 'active') {
+                            console.log(`[Notifications] Omitiendo alerta local (App en segundo plano): ${type}:${businessId}`);
+                        }
+                    }
+                )
+                .subscribe((status: string) => {
+                    console.log(`[Notifications] Estado del canal (${authUserId}):`, status);
+                    if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                        globalSystemNotifChannel = null;
+                        currentSubscribedUserId = null;
+                    }
+                });
         };
 
-        // Suscribirse a solicitudes de vehículo (vehicle_requested_at)
-        const vehicleChannel = supabase
-            .channel('vehicle-requests')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'room_stays',
-                    filter: 'status=eq.ACTIVA'
-                },
-                (payload) => {
-                    const newData = payload.new as any;
-                    const oldData = payload.old as any;
-
-                    // Detectar nueva solicitud de vehículo
-                    if (newData.vehicle_requested_at && !oldData.vehicle_requested_at) {
-                        if (shouldNotify(`VEHICLE_REQUEST:${newData.id}`)) {
-                            scheduleLocalNotification({
-                                title: '🚗 ¡Solicitud de Vehículo!',
-                                body: `Habitación solicita su vehículo`,
-                                data: { type: 'VEHICLE_REQUEST', stayId: newData.id }
-                            });
-                        }
-                    }
-
-                    // Detectar solicitud de checkout
-                    if (newData.valet_checkout_requested_at && !oldData.valet_checkout_requested_at) {
-                        if (shouldNotify(`CHECKOUT_REQUEST:${newData.id}`)) {
-                            scheduleLocalNotification({
-                                title: '🚪 Solicitud de Salida',
-                                body: `Una habitación solicita checkout`,
-                                data: { type: 'CHECKOUT_REQUEST', stayId: newData.id }
-                            });
-                        }
-                    }
-                }
-            )
-            .subscribe((status) => {
-                console.log('[Notifications] Vehicle channel status:', status);
-            });
-
-        // Suscribirse a nuevos consumos pendientes
-        const consumptionChannel = supabase
-            .channel('new-consumptions')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'sales_order_items',
-                },
-                (payload) => {
-                    const newItem = payload.new as any;
-                    if (newItem.delivery_status === 'PENDING') {
-                        if (shouldNotify(`NEW_CONSUMPTION:${newItem.id}`)) {
-                            console.log('[Notifications] Enviando notificación de nuevo consumo:', newItem);
-                            scheduleLocalNotification({
-                                title: 'Nuevo Servicio',
-                                body: `Hay un nuevo servicio pendiente de entrega`,
-                                data: { type: 'NEW_CONSUMPTION', consumptionId: newItem.id }
-                            });
-                        }
-                    }
-                }
-            )
-            .subscribe((status) => {
-                console.log('[Notifications] Consumption channel status:', status);
-            });
-
-        // Suscribirse a nuevas entradas
-        const entryChannel = supabase
-            .channel('new-entries')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'room_stays',
-                },
-                (payload) => {
-                    const newStay = payload.new as any;
-                    if (newStay.status === 'ACTIVA' && !newStay.vehicle_plate && !newStay.valet_employee_id) {
-                        if (shouldNotify(`NEW_ENTRY:${newStay.id}`)) {
-                            scheduleLocalNotification({
-                                title: '🏨 Nueva Entrada',
-                                body: `Hay una nueva entrada pendiente de registro`,
-                                data: { type: 'NEW_ENTRY', stayId: newStay.id }
-                            });
-                        }
-                    }
-                }
-            )
-            .subscribe((status) => {
-                console.log('[Notifications] Entry channel status:', status);
-            });
+        setupRealtime();
 
         return () => {
-            supabase.removeChannel(vehicleChannel);
-            supabase.removeChannel(consumptionChannel);
-            supabase.removeChannel(entryChannel);
+            isMounted = false;
+            // No destruimos el canal global aquí para permitir que sobreviva a re-renders menores
+            // pero sí limpiamos cuando la app se cierra de verdad o el employeeId cambia drásticamente
         };
     }, [employeeId]);
 
@@ -280,8 +292,10 @@ async function scheduleLocalNotification(params: {
     body: string;
     data?: NotificationData;
     channelId?: string;
+    identifier?: string; // ID único para evitar duplicados en la bandeja
 }) {
     await Notifications.scheduleNotificationAsync({
+        identifier: params.identifier, // Si es el mismo ID, Expo reemplaza la notificación anterior
         content: {
             title: params.title,
             body: params.body,
@@ -294,7 +308,10 @@ async function scheduleLocalNotification(params: {
 
 function handleNotificationReceived(notification: Notifications.Notification) {
     const data = notification.request.content.data as unknown as NotificationData;
-    console.log('Notification received:', data);
+    console.log('Push notification received:', data);
+    // Nota: Aquí podrías implementar más lógica si necesitas silenciar el Push
+    // basado en processedNotifications, pero como scheduleLocalNotification
+    // ya de-duplica el Realtime, el usuario solo verá el Push de sistema o el local de realtime.
 }
 
 function handleNotificationResponse(response: Notifications.NotificationResponse) {
@@ -312,10 +329,19 @@ function handleNotificationResponse(response: Notifications.NotificationResponse
             pathname: '/(tabs)/rooms',
             params: { action: 'entry', stayId: data.stayId }
         });
-    } else if (data.type === 'NEW_CONSUMPTION') {
+    } else if (data.type === 'NEW_CONSUMPTION' || data.type === 'REGULAR_CONSUMPTION') {
+        router.push({
+            pathname: '/(tabs)/services',
+            params: { salesOrderId: data.salesOrderId }
+        });
+    } else if (data.type === 'NEW_EXTRA') {
         router.push({
             pathname: '/(tabs)/rooms',
-            params: { action: 'verify', consumptionId: data.consumptionId }
+            params: {
+                action: 'verify',
+                consumptionId: data.consumptionId,
+                stayId: data.stayId
+            }
         });
     }
 }

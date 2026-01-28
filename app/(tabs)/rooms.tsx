@@ -9,6 +9,11 @@ import { searchVehicles, VehicleSearchResult } from '../../lib/vehicle-catalog';
 import { Car, CheckCircle2, CreditCard, Banknote, AlertCircle, Clock, LogOut, Users, DollarSign, AlertTriangle, X, Minus, Plus, Search, Hammer } from 'lucide-react-native';
 import { MultiPaymentInput } from '../../components/MultiPaymentInput';
 import { PaymentEntry } from '../../lib/payment-types';
+import { FlashList } from "@shopify/flash-list";
+import * as Haptics from 'expo-haptics';
+import { Skeleton, RoomCardSkeleton } from '../../components/Skeleton';
+
+const AnyFlashList = FlashList as any;
 
 interface RoomCardProps {
     roomId: string;
@@ -649,6 +654,7 @@ export default function RoomsScreen() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, debouncedFetch)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, debouncedFetch)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_order_items' }, debouncedFetch)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, debouncedFetch)
             .subscribe();
 
         return () => {
@@ -658,7 +664,7 @@ export default function RoomsScreen() {
     }, [fetchRooms]);
 
     const {
-        handleAcceptEntry,
+        handleAcceptEntry: originalHandleAcceptEntry,
         handleConfirmCheckout,
         handleProposeCheckout,
         handleReportDamage,
@@ -669,6 +675,21 @@ export default function RoomsScreen() {
         loading: actionLoading
     } = useValetActions(fetchRooms);
 
+    const handleAcceptEntry = async (stayId: string, roomNum: string, valetId: string) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        // Optimistic update
+        setRooms(prev => prev.map(r => {
+            const stay = r.room_stays?.find((s: any) => s.id === stayId);
+            if (stay) {
+                return { ...r, room_stays: r.room_stays.map((s: any) => s.id === stayId ? { ...s, valet_employee_id: valetId } : s) };
+            }
+            return r;
+        }));
+        const success = await originalHandleAcceptEntry(stayId, roomNum, valetId);
+        if (!success) fetchRooms(true); // Rollback
+        return success;
+    };
+
     const onRefresh = () => {
         setRefreshing(true);
         fetchRooms();
@@ -677,7 +698,11 @@ export default function RoomsScreen() {
     const handleOpenEntry = useCallback((roomId: string) => {
         const room = rooms.find(r => r.id === roomId);
         if (!room) return;
-        const stay = room.room_stays.find((s: any) => s.status === 'ACTIVA');
+        const stay = room.room_stays?.find((s: any) => s.status === 'ACTIVA');
+        if (!stay) {
+            console.warn("No active stay found for entry", roomId);
+            return;
+        }
         setSelectedRoom({ ...room, stay });
         setPlate('');
         setBrand('');
@@ -725,7 +750,8 @@ export default function RoomsScreen() {
     const handleOpenCheckout = useCallback((roomId: string) => {
         const room = rooms.find(r => r.id === roomId);
         if (!room) return;
-        const stay = room.room_stays.find((s: any) => s.status === 'ACTIVA');
+        const stay = room.room_stays?.find((s: any) => s.status === 'ACTIVA');
+        if (!stay) return;
         setSelectedRoom({ ...room, stay });
         setCheckoutPersonCount(stay.current_people || 2);
 
@@ -869,7 +895,9 @@ export default function RoomsScreen() {
     };
 
     const handleVerifyExtraOpen = useCallback((room: any, items: any[]) => {
-        setSelectedRoom(room);
+        const stay = room.room_stays?.find((s: any) => s.status === 'ACTIVA');
+        if (!stay) return;
+        setSelectedRoom({ ...room, stay });
         setExtraItems(items);
         setShowVerifyExtraModal(true);
     }, []);
@@ -895,6 +923,7 @@ export default function RoomsScreen() {
 
     const submitCheckout = async () => {
         if (!selectedRoom || !employeeId) return;
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         const success = await handleConfirmCheckout(
             selectedRoom.stay.id,
             selectedRoom.number,
@@ -931,18 +960,43 @@ export default function RoomsScreen() {
                 hasActiveShift={hasActiveShift}
                 actionLoading={actionLoading}
                 employeeId={employeeId}
-                handleAcceptEntry={handleAcceptEntry}
-                handleOpenEntry={handleOpenEntry}
-                handleOpenCheckout={handleOpenCheckout}
-                handleProposeCheckout={handleProposeCheckout}
+                handleAcceptEntry={async (stayId, roomNumber, valetId) => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    return await handleAcceptEntry(stayId, roomNumber, valetId);
+                }}
+                handleOpenEntry={(roomId) => {
+                    Haptics.selectionAsync();
+                    handleOpenEntry(roomId);
+                }}
+                handleOpenCheckout={(roomId) => {
+                    Haptics.selectionAsync();
+                    handleOpenCheckout(roomId);
+                }}
+                handleProposeCheckout={async (stayId, roomNumber, valetId) => {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    return await handleProposeCheckout(stayId, roomNumber, valetId);
+                }}
                 pendingExtras={pendingExtras}
-                onVerifyExtras={() => handleVerifyExtraOpen(room, pendingExtras)}
+                onVerifyExtras={() => {
+                    Haptics.selectionAsync();
+                    handleVerifyExtraOpen(room, pendingExtras);
+                }}
             />
         );
     }, [isDark, hasActiveShift, actionLoading, employeeId, handleAcceptEntry, handleOpenEntry, handleOpenCheckout, handleProposeCheckout, handleVerifyExtraOpen]);
 
     if (loading || roleLoading) {
-        return <View className={`flex-1 items-center justify-center ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}><ActivityIndicator size="large" color="#a1a1aa" /></View>;
+        return (
+            <View className={`flex-1 ${isDark ? 'bg-zinc-950' : 'bg-zinc-50'}`}>
+                <View className="p-4 px-6 pt-12">
+                    <Skeleton width={180} height={28} borderRadius={14} style={{ marginBottom: 8 }} />
+                    <Skeleton width={120} height={14} borderRadius={4} />
+                </View>
+                <View className="px-2">
+                    {[1, 2, 3].map(i => <RoomCardSkeleton key={i} />)}
+                </View>
+            </View>
+        );
     }
 
     return (
@@ -954,12 +1008,20 @@ export default function RoomsScreen() {
                 </View>
             )}
 
-            <FlatList
-                data={rooms}
-                renderItem={renderRoom}
-                keyExtractor={item => item.id}
-                contentContainerStyle={{ padding: 8 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? '#94a3b8' : '#64748b'} />}
+            {/* Using AnyFlashList to bypass persistent and incorrect type errors in the IDE */}
+            <AnyFlashList
+                data={rooms as any}
+                renderItem={renderRoom as any}
+                keyExtractor={(item: any) => item.id}
+                estimatedItemSize={120}
+                contentContainerStyle={{ padding: 8, paddingBottom: 100 }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={isDark ? '#94a3b8' : '#64748b'}
+                    />
+                }
             />
 
             <EntryModal

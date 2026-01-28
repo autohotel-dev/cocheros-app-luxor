@@ -224,7 +224,7 @@ export function MultiPaymentInput({
                                             {/* Details Row */}
                                             <View className="flex-row gap-3">
                                                 <View className="flex-[0.8]">
-                                                    <Text className={`text-[10px] font-black mb-2 uppercase tracking-widest ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Terminales</Text>
+                                                    <Text className={`text-[10px] font-black mb-2 uppercase tracking-widest ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Últimos 4 Dígitos</Text>
                                                     <TextInput
                                                         className={`p-4 rounded-2xl border-2 text-center text-xl font-black ${isDark ? 'bg-black border-zinc-800 text-white' : 'bg-white border-zinc-100 text-zinc-800'}`}
                                                         value={payment.cardLast4 || ''}
