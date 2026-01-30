@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "946007699482",
+    "project_id": "autohotel-luxor-manager",
+    "storage_bucket": "autohotel-luxor-manager.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:946007699482:android:d5e554fb1ef26eb9d6a1a3",
+        "android_client_info": {
+          "package_name": "com.autohotel.valet"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA2xwXBAhKmS_UuLBvoQ2qK3I4NijTHXr4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

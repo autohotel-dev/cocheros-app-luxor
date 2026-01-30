@@ -251,14 +251,19 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
 
         try {
             const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+            console.log('[Notifications] Project ID configurado:', projectId);
             if (projectId) {
                 token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
             } else {
-                // Fallback para desarrollo
+                console.warn('[Notifications] Project ID no encontrado en la configuración, usando fallback');
                 token = (await Notifications.getExpoPushTokenAsync()).data;
             }
-        } catch (error) {
-            console.error('Error getting push token:', error);
+        } catch (error: any) {
+            console.error('[Notifications] Error detallado al obtener token:', {
+                message: error.message,
+                code: error.code,
+                stack: error.stack
+            });
         }
     } else {
         console.log('Push notifications require a physical device');
