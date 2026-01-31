@@ -74,12 +74,15 @@ Notifications.setNotificationHandler({
 });
 
 export interface NotificationData {
-    type?: 'VEHICLE_REQUEST' | 'NEW_CONSUMPTION' | 'NEW_ENTRY' | 'CHECKOUT_REQUEST' | 'GENERAL' | 'REGULAR_CONSUMPTION' | 'NEW_EXTRA';
+    type?: 'VEHICLE_REQUEST' | 'NEW_CONSUMPTION' | 'NEW_ENTRY' | 'CHECKOUT_REQUEST' | 'GENERAL' | 'REGULAR_CONSUMPTION' | 'NEW_EXTRA'
+    | 'ROOM_CHANGE' | 'DAMAGE_REPORT' | 'PROMO_4H';
     roomNumber?: string;
     stayId?: string;
     consumptionId?: string;
     salesOrderId?: string;
     message?: string;
+    newRoomId?: string;
+    oldRoomId?: string;
     [key: string]: unknown;
 }
 
@@ -173,8 +176,10 @@ export function useNotifications(employeeId: string | null) {
                         console.log(`[Notifications] Evento Realtime recibido: ${type}:${businessId}`);
 
                         // SOLO NOTIFICAR LOCALMENTE SI LA APP ESTÁ EN PRIMER PLANO
-                        // Si la app está en segundo plano, confiamos en la notificación Push del sistema
-                        if (AppState.currentState === 'active' && shouldNotifyGlobal(type, businessId)) {
+                        // Quitamos shouldNotifyGlobal aquí porque al programar la notificación local,
+                        // esta pasará por setNotificationHandler, donde se hará la verdadera deduplicación.
+                        // Si lo marcamos aquí, setNotificationHandler pensará que es duplicado y lo ocultará.
+                        if (AppState.currentState === 'active') {
                             console.log(`[Notifications] -> Lanzando alerta local (App Activa): ${newNotif.title} para ID:${businessId}`);
                             scheduleLocalNotification({
                                 identifier: businessId, // USAR ID ESTABLE para que reemplace si llega otro igual
@@ -182,7 +187,7 @@ export function useNotifications(employeeId: string | null) {
                                 body: newNotif.message || '',
                                 data: { ...newNotif.data, type, id: businessId }
                             });
-                        } else if (AppState.currentState !== 'active') {
+                        } else {
                             console.log(`[Notifications] Omitiendo alerta local (App en segundo plano): ${type}:${businessId}`);
                         }
                     }
@@ -251,14 +256,19 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
 
         try {
             const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+            console.log('[Notifications] Project ID configurado:', projectId);
             if (projectId) {
                 token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
             } else {
-                // Fallback para desarrollo
+                console.warn('[Notifications] Project ID no encontrado en la configuración, usando fallback');
                 token = (await Notifications.getExpoPushTokenAsync()).data;
             }
-        } catch (error) {
-            console.error('Error getting push token:', error);
+        } catch (error: any) {
+            console.error('[Notifications] Error detallado al obtener token:', {
+                message: error.message,
+                code: error.code,
+                stack: error.stack
+            });
         }
     } else {
         console.log('Push notifications require a physical device');
@@ -334,13 +344,25 @@ function handleNotificationResponse(response: Notifications.NotificationResponse
             pathname: '/(tabs)/services',
             params: { salesOrderId: data.salesOrderId }
         });
-    } else if (data.type === 'NEW_EXTRA') {
+    } else if (data.type === 'NEW_EXTRA' || data.type === 'DAMAGE_REPORT' || data.type === 'PROMO_4H') {
+        // Redirigir a verificar extra para estos casos también
         router.push({
             pathname: '/(tabs)/rooms',
             params: {
                 action: 'verify',
                 consumptionId: data.consumptionId,
-                stayId: data.stayId
+                stayId: data.stayId,
+                salesOrderId: data.salesOrderId
+            }
+        });
+    } else if (data.type === 'ROOM_CHANGE') {
+        // Ir a la nueva habitación
+        router.push({
+            pathname: '/(tabs)/rooms',
+            params: {
+                action: 'view', // Acción genérica para enfocar
+                stayId: data.stayId,
+                roomId: data.newRoomId
             }
         });
     }

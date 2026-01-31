@@ -27,7 +27,10 @@ export default function ServicesScreen() {
     const [notes, setNotes] = useState('');
 
     const fetchData = useCallback(async () => {
-        if (!employeeId) return;
+        if (!employeeId) {
+            setLoading(false);
+            return;
+        }
 
         try {
             // Pending
