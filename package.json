@@ -13,6 +13,7 @@
     "@shopify/flash-list": "2.0.2",
     "@supabase/supabase-js": "^2.91.1",
     "expo": "~54.0.32",
+    "expo-av": "~16.0.8",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
     "expo-device": "~8.0.10",

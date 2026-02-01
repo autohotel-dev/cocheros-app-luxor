@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
+import { colorScheme } from 'nativewind';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ThemeMode = 'light' | 'dark' | 'system';
@@ -30,6 +31,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         });
     }, []);
 
+    // Sincronizar con NativeWind cuando cambie el tema (después del render)
+    useEffect(() => {
+        if (isLoaded) {
+            // Usar setTimeout para evitar conflictos durante el render
+            const timer = setTimeout(() => {
+                colorScheme.set(themeMode);
+            }, 0);
+            return () => clearTimeout(timer);
+        }
+    }, [themeMode, isLoaded]);
+
     // Guardar tema cuando cambie
     const setThemeMode = (mode: ThemeMode) => {
         setThemeModeState(mode);
@@ -37,9 +49,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     };
 
     // Determinar tema actual
-    const theme: 'light' | 'dark' = 
-        themeMode === 'system' 
-            ? (systemColorScheme || 'light') 
+    const theme: 'light' | 'dark' =
+        themeMode === 'system'
+            ? (systemColorScheme || 'light')
             : themeMode;
 
     const isDark = theme === 'dark';

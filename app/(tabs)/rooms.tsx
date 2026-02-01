@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, FlatList, RefreshControl, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, RefreshControl, Modal, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useUserRole } from '../../hooks/use-user-role';
 import { useEntryActions } from '../../hooks/use-entry-actions';
@@ -8,7 +8,7 @@ import { useCheckoutActions } from '../../hooks/use-checkout-actions';
 import { useConsumptionActions } from '../../hooks/use-consumption-actions';
 import { useTheme } from '../../contexts/theme-context';
 import { searchVehicles, VehicleSearchResult } from '../../lib/vehicle-catalog';
-import { Car, CheckCircle2, CreditCard, Banknote, AlertCircle, Clock, LogOut, Users, DollarSign, AlertTriangle, X, Minus, Plus, Search, Hammer } from 'lucide-react-native';
+import { AlertCircle, AlertTriangle } from 'lucide-react-native';
 import { MultiPaymentInput } from '../../components/MultiPaymentInput';
 import { PaymentEntry } from '../../lib/payment-types';
 import { FlashList } from "@shopify/flash-list";
@@ -23,6 +23,7 @@ const AnyFlashList = FlashList as any;
 import { RoomCard } from '../../components/rooms/RoomCard';
 import { EntryModal } from '../../components/rooms/modals/EntryModal';
 import { VerifyExtraModal } from '../../components/rooms/modals/VerifyExtraModal';
+import { VerifyRoomChangeModal } from '../../components/rooms/modals/VerifyRoomChangeModal';
 import { CheckoutModal } from '../../components/rooms/modals/CheckoutModal';
 
 export default function RoomsScreen() {
@@ -70,6 +71,10 @@ export default function RoomsScreen() {
     // Verify Extra Modal State
     const [showVerifyExtraModal, setShowVerifyExtraModal] = useState(false);
     const [extraItems, setExtraItems] = useState<SalesOrderItem[]>([]);
+
+    // Verify Room Change Modal State
+    const [showVerifyRoomChangeModal, setShowVerifyRoomChangeModal] = useState(false);
+    const [roomChangeItem, setRoomChangeItem] = useState<SalesOrderItem | null>(null);
 
     const fetchRooms = useCallback(async (quiet = false) => {
         if (!quiet && isInitialLoad) setLoading(true);
@@ -140,6 +145,7 @@ export default function RoomsScreen() {
     } = useCheckoutActions(fetchRooms);
 
     const {
+        handleAcceptVerification,
         handleConfirmAllDeliveries,
         loading: consumptionLoading
     } = useConsumptionActions(fetchRooms);
@@ -162,6 +168,7 @@ export default function RoomsScreen() {
     };
 
     const onRefresh = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setRefreshing(true);
         fetchRooms();
     };
@@ -238,11 +245,7 @@ export default function RoomsScreen() {
         setShowExtraPersonForm(false);
     }, [rooms]);
 
-    // Calcular monto basado en tipo de habitación y personas
-    const baseAmount = selectedRoom?.room_types?.base_price ?? 0;
-    const extraPersonPrice = selectedRoom?.room_types?.extra_person_price ?? 0;
-    const extraPeopleCount = Math.max(0, personCount - 2);
-    const calculatedAmount = baseAmount + (extraPeopleCount * extraPersonPrice);
+
 
     const submitEntry = async () => {
         if (!selectedRoom || !employeeId || !plate.trim()) return;
@@ -308,6 +311,29 @@ export default function RoomsScreen() {
                         setSelectedRoom({ ...room, stay });
                         setExtraItems(pendingExtras);
                         setShowVerifyExtraModal(true);
+                    }
+                }
+            }
+        } else if (params.action === 'verifyRoomChange' && params.consumptionId) {
+            // Deep link para verificar cambio de habitación
+            const room = rooms.find(r => r.room_stays?.some((s: any) =>
+                s.sales_orders?.sales_order_items?.some((i: any) => i.id === params.consumptionId)
+            ));
+
+            if (room) {
+                const stay = room.room_stays.find(s => s.status === 'ACTIVA');
+                if (stay) {
+                    const orders: SalesOrder[] = Array.isArray(stay.sales_orders) ? stay.sales_orders : (stay.sales_orders ? [stay.sales_orders] : []);
+                    const roomChangeItems = orders.flatMap(o => o.sales_order_items || [])
+                        .filter(item =>
+                            item.concept_type === 'ROOM_CHANGE_ADJUSTMENT' &&
+                            (!item.delivery_status || item.delivery_status === 'PENDING_VALET')
+                        );
+
+                    if (roomChangeItems.length > 0) {
+                        setSelectedRoom({ ...room, stay });
+                        setRoomChangeItem(roomChangeItems[0]);
+                        setShowVerifyRoomChangeModal(true);
                     }
                 }
             }
@@ -392,6 +418,57 @@ export default function RoomsScreen() {
         }
     };
 
+    const handleVerifyRoomChangeSubmit = async (payments: PaymentEntry[], isRefund: boolean) => {
+        if (!selectedRoom || !employeeId || !roomChangeItem) return;
+
+        try {
+            // Actualizar issue_description con los detalles del pago reportado por el cochero
+            const existingMetadata = roomChangeItem.issue_description
+                ? JSON.parse(roomChangeItem.issue_description)
+                : {};
+
+            const metadataWithPayment = {
+                ...existingMetadata,
+                valetPaymentReport: {
+                    payments, // Array de { amount, method }
+                    reportedAt: new Date().toISOString(),
+                    reportedBy: employeeId
+                }
+            };
+
+            // Marcar el item como entregado/verificado por el cochero
+            // NOTA: No marcamos is_paid: true ni insertamos pagos automáticamente.
+            // Recepción verificará el dinero y marcará como pagado.
+            await supabase.from('sales_order_items')
+                .update({
+                    delivery_status: 'DELIVERED',
+                    delivery_completed_at: new Date().toISOString(),
+                    delivery_accepted_by: employeeId,
+                    issue_description: JSON.stringify(metadataWithPayment)
+                })
+                .eq('id', roomChangeItem.id);
+
+            // Feedback visual
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+            setShowVerifyRoomChangeModal(false);
+            setRoomChangeItem(null);
+            setSelectedRoom(null);
+            await fetchRooms(true);
+        } catch (error) {
+            console.error('Error verifying room change:', error);
+            Alert.alert('Error', 'No se pudo verificar el cambio. Intenta de nuevo.');
+        }
+    };
+
+    const handleVerifyRoomChangeOpen = useCallback((room: Room, item: SalesOrderItem) => {
+        const stay = room.room_stays?.find(s => s.status === 'ACTIVA');
+        if (!stay) return;
+        setSelectedRoom({ ...room, stay });
+        setRoomChangeItem(item);
+        setShowVerifyRoomChangeModal(true);
+    }, []);
+
     const submitCheckout = async () => {
         if (!selectedRoom || !employeeId) return;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -410,11 +487,37 @@ export default function RoomsScreen() {
 
         // Calculate pending extras
         const orders: SalesOrder[] = Array.isArray(stay.sales_orders) ? stay.sales_orders : (stay.sales_orders ? [stay.sales_orders] : []);
-        const pendingExtras = orders.flatMap(o => o.sales_order_items || [])
-            .filter(item =>
-                (item.concept_type === 'EXTRA_PERSON' || item.concept_type === 'EXTRA_HOUR' || item.concept_type === 'RENEWAL' || item.concept_type === 'PROMO_4H') &&
-                (!item.delivery_status || item.delivery_status === 'PENDING_VALET')
+
+        // Debug: Log all items for this room
+        const allOrderItems = orders.flatMap(o => o.sales_order_items || []);
+        console.log(`[Room ${room.number}] Total items: ${allOrderItems.length}, concept_types:`,
+            allOrderItems.map(i => i.concept_type)
+        );
+
+        const pendingExtras = allOrderItems.filter(item =>
+            (item.concept_type === 'EXTRA_PERSON' || item.concept_type === 'EXTRA_HOUR' || item.concept_type === 'RENEWAL' || item.concept_type === 'PROMO_4H') &&
+            (!item.delivery_status || item.delivery_status === 'PENDING_VALET' || item.delivery_status === 'ACCEPTED')
+        );
+
+        // Calculate pending room change items
+        const allItems = orders.flatMap(o => o.sales_order_items || []);
+        const roomChangeItems = allItems.filter(item => item.concept_type === 'ROOM_CHANGE_ADJUSTMENT');
+
+        // Debug log
+        if (roomChangeItems.length > 0) {
+            console.log(`[Room ${room.number}] Found ${roomChangeItems.length} ROOM_CHANGE items:`,
+                roomChangeItems.map(i => ({
+                    id: i.id,
+                    concept_type: i.concept_type,
+                    delivery_status: i.delivery_status,
+                    is_paid: i.is_paid
+                }))
             );
+        }
+
+        const pendingRoomChangeItem = roomChangeItems.find(item =>
+            !item.delivery_status || item.delivery_status === 'PENDING_VALET'
+        ) || null;
 
         return (
             <RoomCard
@@ -452,9 +555,18 @@ export default function RoomsScreen() {
                     Haptics.selectionAsync();
                     handleVerifyExtraOpen(room, pendingExtras);
                 }}
+                onAcceptVerification={async (roomId, items) => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    await handleAcceptVerification(items, room.number, employeeId!);
+                }}
+                pendingRoomChangeItem={pendingRoomChangeItem}
+                onVerifyRoomChange={(roomId, item) => {
+                    Haptics.selectionAsync();
+                    handleVerifyRoomChangeOpen(room, item);
+                }}
             />
         );
-    }, [isDark, hasActiveShift, actionLoading, employeeId, handleAcceptEntry, handleOpenEntry, handleOpenCheckout, handleProposeCheckout, handleVerifyExtraOpen]);
+    }, [isDark, hasActiveShift, actionLoading, employeeId, handleAcceptEntry, handleOpenEntry, handleOpenCheckout, handleProposeCheckout, handleVerifyExtraOpen, handleVerifyRoomChangeOpen]);
 
     if (loading || roleLoading) {
         return (
@@ -567,6 +679,16 @@ export default function RoomsScreen() {
                 isDark={isDark}
                 actionLoading={actionLoading}
                 onSubmit={handleVerifyExtraSubmit}
+            />
+
+            <VerifyRoomChangeModal
+                visible={showVerifyRoomChangeModal}
+                onClose={() => setShowVerifyRoomChangeModal(false)}
+                room={selectedRoom}
+                item={roomChangeItem}
+                isDark={isDark}
+                actionLoading={actionLoading}
+                onSubmit={handleVerifyRoomChangeSubmit}
             />
         </View>
     );

@@ -13,7 +13,7 @@ export interface RoomType {
 export interface SalesOrderItem {
     id: string;
     sales_order_id: string;
-    concept_type: string; // 'EXTRA_PERSON' | 'EXTRA_HOUR' | 'RENEWAL' | 'PROMO_4H' | 'DAMAGE_CHARGE' | etc.
+    concept_type: string; // 'EXTRA_PERSON' | 'EXTRA_HOUR' | 'RENEWAL' | 'PROMO_4H' | 'DAMAGE_CHARGE' | 'ROOM_CHANGE_ADJUSTMENT' | etc.
     description: string;
     unit_price: number;
     qty: number;
@@ -24,6 +24,7 @@ export interface SalesOrderItem {
     delivery_accepted_at: string | null;
     delivery_completed_at: string | null;
     delivery_notes: string | null;
+    issue_description?: string | null; // JSON metadata para cambios de habitación
     created_at: string;
 }
 

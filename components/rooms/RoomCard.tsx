@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { Car, CheckCircle2, LogOut, AlertTriangle } from 'lucide-react-native';
+import Animated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
+import { Car, CheckCircle2, LogOut, AlertTriangle, ArrowRightLeft } from 'lucide-react-native';
 import { SalesOrderItem } from '../../lib/types';
 
 export interface RoomCardProps {
@@ -22,7 +23,11 @@ export interface RoomCardProps {
     handleProposeCheckout: (stayId: string, roomNumber: string, valetId: string) => Promise<boolean>;
     pendingExtras: SalesOrderItem[];
     onVerifyExtras: (roomId: string, items: SalesOrderItem[]) => void;
+    onAcceptVerification: (roomId: string, items: SalesOrderItem[]) => Promise<void>;
     isCheckoutReviewed: boolean;
+    // Room change props
+    pendingRoomChangeItem?: SalesOrderItem | null;
+    onVerifyRoomChange?: (roomId: string, item: SalesOrderItem) => void;
 }
 
 export const RoomCard = memo(({
@@ -44,20 +49,33 @@ export const RoomCard = memo(({
     handleProposeCheckout,
     pendingExtras,
     onVerifyExtras,
-    isCheckoutReviewed
+    onAcceptVerification,
+    isCheckoutReviewed,
+    pendingRoomChangeItem,
+    onVerifyRoomChange
 }: RoomCardProps) => {
     const isPendingEntry = !vehiclePlate;
     const isPendingCheckout = !!vehiclePlate && !isCheckoutReviewed;
-    const hasPendingExtras = pendingExtras && pendingExtras.length > 0;
+
+    // Group extras by status
+    const pendingAcceptanceExtras = pendingExtras?.filter(i => !i.delivery_status || i.delivery_status === 'PENDING_VALET') || [];
+    const acceptedExtras = pendingExtras?.filter(i => i.delivery_status === 'ACCEPTED') || [];
+
+    // Determine which state to show (prioritize acceptance if any are pending)
+    const showAcceptButton = pendingAcceptanceExtras.length > 0;
+    const showVerifyButton = acceptedExtras.length > 0 && !showAcceptButton; // Only show verify if everything waiting is accepted
 
     const isUnassignedEntry = isPendingEntry && !valetEmployeeId;
     const isMyPendingEntry = isPendingEntry && valetEmployeeId === employeeId;
 
     return (
-        <View className={`m-2 p-5 rounded-2xl border-2 shadow-sm ${isUrgent
+        <Animated.View
+            entering={FadeInDown.delay(100).springify()}
+            layout={LinearTransition.springify()}
+            className={`m-2 p-5 rounded-2xl border-2 shadow-sm ${isUrgent
                 ? 'bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/50'
                 : 'bg-white border-zinc-100 dark:bg-zinc-900 dark:border-zinc-800'
-            }`}>
+                }`}>
             <View className="flex-row justify-between items-center mb-5">
                 <View>
                     <Text className="text-[10px] uppercase font-black tracking-widest mb-1 text-zinc-400 dark:text-zinc-500">
@@ -94,15 +112,41 @@ export const RoomCard = memo(({
                 </View>
             </View>
 
-            {hasPendingExtras && (
+            {showAcceptButton && (
                 <TouchableOpacity
-                    onPress={() => onVerifyExtras(roomId, pendingExtras)}
+                    onPress={() => onAcceptVerification(roomId, pendingAcceptanceExtras)}
+                    disabled={!hasActiveShift || actionLoading}
+                    className="flex-row items-center justify-center p-4 rounded-xl shadow-sm mb-3 bg-indigo-500 dark:bg-indigo-600"
+                >
+                    <CheckCircle2 color="white" size={20} strokeWidth={3} />
+                    <Text className="font-black uppercase tracking-widest text-xs ml-2 text-white">
+                        Aceptar Solicitud ({pendingAcceptanceExtras.length})
+                    </Text>
+                </TouchableOpacity>
+            )}
+
+            {showVerifyButton && (
+                <TouchableOpacity
+                    onPress={() => onVerifyExtras(roomId, acceptedExtras)}
                     disabled={!hasActiveShift || actionLoading}
                     className="flex-row items-center justify-center p-4 rounded-xl shadow-sm mb-3 bg-amber-500 dark:bg-amber-600"
                 >
                     <AlertTriangle color="white" size={20} strokeWidth={3} />
                     <Text className="font-black uppercase tracking-widest text-xs ml-2 text-white">
-                        Verificar Extra ({pendingExtras.length})
+                        Verificar Extra ({acceptedExtras.length})
+                    </Text>
+                </TouchableOpacity>
+            )}
+
+            {pendingRoomChangeItem && onVerifyRoomChange && (
+                <TouchableOpacity
+                    onPress={() => onVerifyRoomChange(roomId, pendingRoomChangeItem)}
+                    disabled={!hasActiveShift || actionLoading}
+                    className="flex-row items-center justify-center p-4 rounded-xl shadow-sm mb-3 bg-blue-500 dark:bg-blue-600"
+                >
+                    <ArrowRightLeft color="white" size={20} strokeWidth={3} />
+                    <Text className="font-black uppercase tracking-widest text-xs ml-2 text-white">
+                        Verificar Cambio
                     </Text>
                 </TouchableOpacity>
             )}
@@ -126,8 +170,8 @@ export const RoomCard = memo(({
                     onPress={() => handleOpenEntry(roomId)}
                     disabled={!hasActiveShift || actionLoading}
                     className={`flex-row items-center justify-center p-4 rounded-xl shadow-sm ${hasActiveShift
-                            ? 'bg-zinc-900 dark:bg-white'
-                            : 'bg-zinc-200'
+                        ? 'bg-zinc-900 dark:bg-white'
+                        : 'bg-zinc-200'
                         }`}
                 >
                     <Car color={isDark ? '#000' : '#fff'} size={20} strokeWidth={3} />
@@ -164,8 +208,8 @@ export const RoomCard = memo(({
                                 onPress={() => handleOpenCheckout(roomId)}
                                 disabled={!hasActiveShift || actionLoading}
                                 className={`flex-row items-center justify-center p-4 rounded-xl border-2 ${hasActiveShift
-                                        ? 'border-zinc-100 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800'
-                                        : 'bg-zinc-200 border-zinc-200'
+                                    ? 'border-zinc-100 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800'
+                                    : 'bg-zinc-200 border-zinc-200'
                                     }`}
                             >
                                 <LogOut color={isDark ? '#a1a1aa' : '#52525b'} size={20} strokeWidth={3} />
@@ -183,6 +227,6 @@ export const RoomCard = memo(({
                     </Text>
                 </View>
             )}
-        </View>
+        </Animated.View>
     );
 });

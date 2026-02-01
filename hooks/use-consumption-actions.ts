@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useFeedback } from '../contexts/feedback-context';
 import { PaymentEntry } from '../lib/payment-types';
+import { SalesOrderItem } from '../lib/types';
 
 export function useConsumptionActions(onRefresh: () => Promise<void>) {
     const [loading, setLoading] = useState(false);
@@ -203,10 +204,38 @@ export function useConsumptionActions(onRefresh: () => Promise<void>) {
         }
     }, [onRefresh, showFeedback]);
 
+    const handleAcceptVerification = useCallback(async (items: SalesOrderItem[], roomNumber: string, valetId: string) => {
+        if (items.length === 0) return false;
+        setLoading(true);
+        try {
+            const itemIds = items.map(item => item.id);
+            const { error } = await supabase
+                .from('sales_order_items')
+                .update({
+                    delivery_accepted_by: valetId,
+                    delivery_accepted_at: new Date().toISOString(),
+                    delivery_status: 'ACCEPTED'
+                })
+                .in('id', itemIds);
+
+            if (error) throw error;
+            showFeedback('¡En Camino! 🫡', `Has aceptado verificar la Hab. ${roomNumber}`);
+            await onRefresh();
+            return true;
+        } catch (error: any) {
+            console.error("Error accepting verification:", error);
+            showFeedback('Error', 'Error al aceptar la verificación', 'error');
+            return false;
+        } finally {
+            setLoading(false);
+        }
+    }, [onRefresh, showFeedback]);
+
     return {
         loading,
         handleAcceptConsumption,
         handleAcceptAllConsumptions,
+        handleAcceptVerification,
         handleConfirmDelivery,
         handleConfirmAllDeliveries,
         handleCancelConsumption,

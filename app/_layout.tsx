@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View } from 'react-native';
 import { ThemeProvider, useTheme } from '../contexts/theme-context';
 import { FeedbackProvider } from '../contexts/feedback-context';
+import { InAppNotificationProvider } from '../contexts/in-app-notification-context';
 import { useNotifications } from '../hooks/use-notifications';
 import "../global.css";
 
@@ -78,7 +79,7 @@ function RootLayoutNav() {
     }, []);
 
     return (
-        <View className={`flex-1 ${isDark ? 'dark' : ''}`} style={{ backgroundColor: isDark ? '#09090b' : '#fafafa' }}>
+        <View className="flex-1" style={{ backgroundColor: isDark ? '#09090b' : '#fafafa' }}>
             <Stack screenOptions={{
                 headerShown: false,
                 contentStyle: { backgroundColor: isDark ? '#09090b' : '#fafafa' }
@@ -95,7 +96,9 @@ export default function RootLayout() {
         <SafeAreaProvider>
             <ThemeProvider>
                 <FeedbackProvider>
-                    <RootLayoutNav />
+                    <InAppNotificationProvider>
+                        <RootLayoutNav />
+                    </InAppNotificationProvider>
                 </FeedbackProvider>
             </ThemeProvider>
         </SafeAreaProvider>

@@ -5,6 +5,10 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
 import { router } from 'expo-router';
+import SimpleEventEmitter from '../lib/event-emitter';
+
+// Event emitter para comunicar notificaciones in-app
+export const notificationEventEmitter = new SimpleEventEmitter();
 
 // Cache global para evitar duplicados entre Realtime y Push
 const processedNotificationsMap: { [key: string]: number } = {};
@@ -52,8 +56,11 @@ Notifications.setNotificationHandler({
         const msgId = getNormalizedId(data);
         const type = data.type || 'SYSTEM';
 
+        console.log(`[Notifications] Handler invocado id=${msgId} type=${type}`);
+
         // Si ya procesamos esto por Realtime recientemente, silenciamos el Push por completo
         if (msgId && !shouldNotifyGlobal(type, msgId)) {
+            console.log(`[Notifications] Handler: SILENCIANDO porque ya fue procesado: ${type}:${msgId}`);
             return {
                 shouldPlaySound: false,
                 shouldSetBadge: false,
@@ -63,6 +70,7 @@ Notifications.setNotificationHandler({
             };
         }
 
+        console.log(`[Notifications] Handler: MOSTRANDO notificación: ${type}:${msgId}`);
         return {
             shouldPlaySound: true,
             shouldSetBadge: true,
@@ -175,20 +183,19 @@ export function useNotifications(employeeId: string | null) {
 
                         console.log(`[Notifications] Evento Realtime recibido: ${type}:${businessId}`);
 
-                        // SOLO NOTIFICAR LOCALMENTE SI LA APP ESTÁ EN PRIMER PLANO
-                        // Quitamos shouldNotifyGlobal aquí porque al programar la notificación local,
-                        // esta pasará por setNotificationHandler, donde se hará la verdadera deduplicación.
-                        // Si lo marcamos aquí, setNotificationHandler pensará que es duplicado y lo ocultará.
+                        // SOLO NOTIFICAR SI LA APP ESTÁ EN PRIMER PLANO
                         if (AppState.currentState === 'active') {
-                            console.log(`[Notifications] -> Lanzando alerta local (App Activa): ${newNotif.title} para ID:${businessId}`);
-                            scheduleLocalNotification({
-                                identifier: businessId, // USAR ID ESTABLE para que reemplace si llega otro igual
+                            console.log(`[Notifications] -> Emitiendo alerta in-app: ${newNotif.title}`);
+
+                            // Emitir evento para que el contexto de in-app notifications lo muestre
+                            notificationEventEmitter.emit('inAppNotification', {
+                                type: type,
                                 title: newNotif.title || 'Nueva Notificación',
-                                body: newNotif.message || '',
+                                message: newNotif.message || '',
                                 data: { ...newNotif.data, type, id: businessId }
                             });
                         } else {
-                            console.log(`[Notifications] Omitiendo alerta local (App en segundo plano): ${type}:${businessId}`);
+                            console.log(`[Notifications] Omitiendo alerta (App en segundo plano): ${type}:${businessId}`);
                         }
                     }
                 )
@@ -304,6 +311,9 @@ async function scheduleLocalNotification(params: {
     channelId?: string;
     identifier?: string; // ID único para evitar duplicados en la bandeja
 }) {
+    // Asegurar que usamos el canal default si no se especifica uno, para que suene y vibre en Android
+    const channelId = params.channelId || 'default';
+
     await Notifications.scheduleNotificationAsync({
         identifier: params.identifier, // Si es el mismo ID, Expo reemplaza la notificación anterior
         content: {
@@ -311,8 +321,15 @@ async function scheduleLocalNotification(params: {
             body: params.body,
             data: params.data || {},
             sound: 'default',
+            color: '#3b82f6',
+            vibrate: [0, 250, 250, 250],
+            priority: Notifications.AndroidNotificationPriority.MAX, // Force High Priority
         },
-        trigger: null, // Mostrar inmediatamente
+        trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: 1, // Pequeño delay para asegurar que el channel lo tome
+            channelId: channelId, // IMPORTANTE: Vincular al canal de alta prioridad
+        },
     });
 }
 
@@ -356,13 +373,14 @@ function handleNotificationResponse(response: Notifications.NotificationResponse
             }
         });
     } else if (data.type === 'ROOM_CHANGE') {
-        // Ir a la nueva habitación
+        // Ir a verificar el cambio de habitación
         router.push({
             pathname: '/(tabs)/rooms',
             params: {
-                action: 'view', // Acción genérica para enfocar
+                action: 'verifyRoomChange',
+                consumptionId: data.consumptionId,
                 stayId: data.stayId,
-                roomId: data.newRoomId
+                salesOrderId: data.salesOrderId
             }
         });
     }
