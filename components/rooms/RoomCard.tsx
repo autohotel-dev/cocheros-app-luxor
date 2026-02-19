@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import Animated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
+// import Animated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
 import { Car, CheckCircle2, LogOut, AlertTriangle, ArrowRightLeft } from 'lucide-react-native';
 import { SalesOrderItem } from '../../lib/types';
 
@@ -69,9 +69,7 @@ export const RoomCard = memo(({
     const isMyPendingEntry = isPendingEntry && valetEmployeeId === employeeId;
 
     return (
-        <Animated.View
-            entering={FadeInDown.delay(100).springify()}
-            layout={LinearTransition.springify()}
+        <View
             className={`m-2 p-5 rounded-2xl border-2 shadow-sm ${isUrgent
                 ? 'bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/50'
                 : 'bg-white border-zinc-100 dark:bg-zinc-900 dark:border-zinc-800'
@@ -227,6 +225,6 @@ export const RoomCard = memo(({
                     </Text>
                 </View>
             )}
-        </Animated.View>
+        </View>
     );
 });

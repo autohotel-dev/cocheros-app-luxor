@@ -10,7 +10,7 @@ import { supabase } from '../../lib/supabase';
 
 export default function DashboardScreen() {
     const router = useRouter();
-    const { employeeName, employeeId, hasActiveShift, role, isLoading } = useUserRole();
+    const { employeeName, employeeId, hasActiveShift, role, isLoading, refresh } = useUserRole();
     const { isDark } = useTheme();
     const { showFeedback } = useFeedback();
     const [currentShift, setCurrentShift] = useState<any>(null);
@@ -148,6 +148,7 @@ export default function DashboardScreen() {
                 });
 
             if (error) throw error;
+            await refresh(); // Actualizar estado del usuario
             showFeedback('¡Bienvenido!', 'Tu turno ha iniciado correctamente');
         } catch (err: any) {
             showFeedback('Error', err.message || 'No se pudo iniciar el turno', 'error');
@@ -159,6 +160,7 @@ export default function DashboardScreen() {
     const onRefresh = async () => {
         setRefreshing(true);
         await fetchStats();
+        await refresh();
         setRefreshing(false);
     };
 

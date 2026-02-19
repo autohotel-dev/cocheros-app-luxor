@@ -35,6 +35,9 @@ export interface CheckoutModalProps {
     extraPersonPayments: PaymentEntry[];
     setExtraPersonPayments: (v: PaymentEntry[]) => void;
     handleExtraPersonSubmit: () => void;
+    // Main checkout payment pre-fill
+    payments: PaymentEntry[];
+    setPayments: (v: PaymentEntry[]) => void;
 }
 
 export const CheckoutModal = memo(({
@@ -44,7 +47,8 @@ export const CheckoutModal = memo(({
     showExtraHourForm, setShowExtraHourForm, extraHourAmount, setExtraHourAmount,
     extraHourPayments, setExtraHourPayments, handleExtraHourSubmit,
     showExtraPersonForm, setShowExtraPersonForm, extraPersonAmount, setExtraPersonAmount,
-    extraPersonPayments, setExtraPersonPayments, handleExtraPersonSubmit
+    extraPersonPayments, setExtraPersonPayments, handleExtraPersonSubmit,
+    payments, setPayments
 }: CheckoutModalProps) => {
     return (
         <Modal visible={visible} animationType="slide" transparent>
@@ -74,8 +78,8 @@ export const CheckoutModal = memo(({
                                 <TouchableOpacity
                                     onPress={() => { setShowExtraHourForm(!showExtraHourForm); setShowExtraPersonForm(false); setShowDamageForm(false); }}
                                     className={`flex-1 p-4 rounded-xl border-2 items-center justify-center ${showExtraHourForm
-                                            ? 'border-blue-500 bg-blue-500/10'
-                                            : 'border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900'
+                                        ? 'border-blue-500 bg-blue-500/10'
+                                        : 'border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900'
                                         }`}
                                 >
                                     <Clock size={20} color={showExtraHourForm ? '#3b82f6' : (isDark ? '#71717a' : '#52525b')} />
@@ -85,8 +89,8 @@ export const CheckoutModal = memo(({
                                 <TouchableOpacity
                                     onPress={() => { setShowExtraPersonForm(!showExtraPersonForm); setShowExtraHourForm(false); setShowDamageForm(false); }}
                                     className={`flex-1 p-4 rounded-xl border-2 items-center justify-center ${showExtraPersonForm
-                                            ? 'border-emerald-500 bg-emerald-500/10'
-                                            : 'border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900'
+                                        ? 'border-emerald-500 bg-emerald-500/10'
+                                        : 'border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900'
                                         }`}
                                 >
                                     <Users size={20} color={showExtraPersonForm ? '#10b981' : (isDark ? '#71717a' : '#52525b')} />
@@ -98,8 +102,8 @@ export const CheckoutModal = memo(({
                                 <TouchableOpacity
                                     onPress={() => { setShowDamageForm(!showDamageForm); setShowExtraHourForm(false); setShowExtraPersonForm(false); }}
                                     className={`p-4 rounded-xl border-2 items-center justify-center ${showDamageForm
-                                            ? 'border-red-500 bg-red-500/10'
-                                            : 'border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900'
+                                        ? 'border-red-500 bg-red-500/10'
+                                        : 'border-zinc-100 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900'
                                         }`}
                                 >
                                     <Hammer size={20} color={showDamageForm ? '#ef4444' : (isDark ? '#71717a' : '#52525b')} />
@@ -138,6 +142,24 @@ export const CheckoutModal = memo(({
                                     <TouchableOpacity onPress={handleExtraPersonSubmit} className="mt-8 h-14 bg-emerald-600 rounded-xl items-center justify-center shadow-lg">
                                         <Text className="text-white font-black text-xs uppercase tracking-widest">Informar Pers. Extra</Text>
                                     </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {/* Main Payment Pre-fill Section */}
+                            {!showExtraHourForm && !showExtraPersonForm && !showDamageForm && (
+                                <View className="mb-6">
+                                    <View className="mb-4">
+                                        <Text className="text-sm font-black mb-2 text-zinc-900 dark:text-white">Desglose de Pago (Pre-llenado)</Text>
+                                        <Text className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+                                            Ingresa cómo paga el cliente para agilizar la salida en recepción.
+                                        </Text>
+                                        <MultiPaymentInput
+                                            totalAmount={room?.stay?.sales_orders?.remaining_amount ?? 0}
+                                            payments={payments}
+                                            onPaymentsChange={setPayments}
+                                            disabled={actionLoading}
+                                        />
+                                    </View>
                                 </View>
                             )}
 

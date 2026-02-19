@@ -58,7 +58,14 @@ export function useEntryActions(onRefresh: () => Promise<void>) {
                     current_people: personCount,
                     total_people: Math.max(personCount, totalPeople || 0),
                     vehicle_requested_at: null,
-                    valet_checkout_requested_at: null
+                    valet_checkout_requested_at: null,
+                    // Guardar datos de pago para el checkout (Fix para recepción)
+                    checkout_payment_data: payments.map(p => ({
+                        amount: p.amount,
+                        method: p.method,
+                        reference: p.reference,
+                        concept: 'ENTRADA'
+                    }))
                 })
                 .eq('id', stayId)
                 .or(`valet_employee_id.is.null,valet_employee_id.eq.${valetId}`);

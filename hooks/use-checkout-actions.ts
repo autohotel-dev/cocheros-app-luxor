@@ -32,14 +32,20 @@ export function useCheckoutActions(onRefresh: () => Promise<void>) {
         }
     }, [onRefresh, showFeedback]);
 
-    const handleProposeCheckout = useCallback(async (stayId: string, roomNumber: string, valetId: string) => {
+    const handleProposeCheckout = useCallback(async (
+        stayId: string,
+        roomNumber: string,
+        valetId: string,
+        payments: PaymentEntry[]
+    ) => {
         setLoading(true);
         try {
             const { error } = await supabase
                 .from('room_stays')
                 .update({
                     valet_checkout_requested_at: new Date().toISOString(),
-                    checkout_valet_employee_id: valetId
+                    checkout_valet_employee_id: valetId,
+                    checkout_payment_data: payments // Save the pre-filled payment data
                 })
                 .eq('id', stayId);
 

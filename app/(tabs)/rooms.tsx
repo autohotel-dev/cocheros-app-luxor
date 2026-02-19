@@ -67,6 +67,7 @@ export default function RoomsScreen() {
     // States for Checkout Modal
     const [showCheckoutModal, setShowCheckoutModal] = useState(false);
     const [checkoutPersonCount, setCheckoutPersonCount] = useState(2);
+    const [checkoutPayments, setCheckoutPayments] = useState<PaymentEntry[]>([]);
 
     // Verify Extra Modal State
     const [showVerifyExtraModal, setShowVerifyExtraModal] = useState(false);
@@ -238,6 +239,19 @@ export default function RoomsScreen() {
         setExtraPersonAmount((room.room_types?.extra_person_price || 0).toString());
         setExtraHourPayments([{ id: 'p1', amount: room.room_types?.extra_hour_price || 0, method: 'EFECTIVO' }]);
         setExtraPersonPayments([{ id: 'p1', amount: room.room_types?.extra_person_price || 0, method: 'EFECTIVO' }]);
+
+        // Initialize checkout payments helper
+        const activeStay = room.room_stays?.find(s => s.status === 'ACTIVA');
+        const orders = activeStay?.sales_orders;
+        const remainingAmount = Array.isArray(orders)
+            ? orders.reduce((sum, order) => sum + (order.remaining_amount || 0), 0)
+            : (orders?.remaining_amount || 0);
+
+        setCheckoutPayments([{
+            id: 'checkout-p1',
+            amount: remainingAmount > 0 ? remainingAmount : 0,
+            method: 'EFECTIVO'
+        }]);
 
         setShowCheckoutModal(true);
         setShowDamageForm(false);
@@ -548,7 +562,7 @@ export default function RoomsScreen() {
                 }}
                 handleProposeCheckout={async (stayId, roomNumber, valetId) => {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    return await handleProposeCheckout(stayId, roomNumber, valetId);
+                    return await handleProposeCheckout(stayId, roomNumber, valetId, checkoutPayments);
                 }}
                 pendingExtras={pendingExtras}
                 onVerifyExtras={() => {
@@ -595,7 +609,7 @@ export default function RoomsScreen() {
                 data={rooms}
                 renderItem={renderRoom}
                 keyExtractor={(item: any) => item.id}
-                estimatedItemSize={200}
+                estimatedItemSize={350}
                 contentContainerStyle={{ padding: 8, paddingBottom: 100 }}
                 ListEmptyComponent={
                     !loading ? (
@@ -669,6 +683,8 @@ export default function RoomsScreen() {
                 extraPersonPayments={extraPersonPayments}
                 setExtraPersonPayments={setExtraPersonPayments}
                 handleExtraPersonSubmit={handleExtraPersonSubmit}
+                payments={checkoutPayments}
+                setPayments={setCheckoutPayments}
             />
 
             <VerifyExtraModal

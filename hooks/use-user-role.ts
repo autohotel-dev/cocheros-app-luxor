@@ -12,6 +12,7 @@ interface UserRoleData {
   isLoading: boolean;
   isValet: boolean;
   hasActiveShift: boolean;
+  refresh: () => Promise<void>;
 }
 
 export function useUserRole(): UserRoleData {
@@ -55,7 +56,7 @@ export function useUserRole(): UserRoleData {
           .eq("email", user.email)
           .eq("is_active", true)
           .single();
-        
+
         employee = employeeByEmail;
       }
 
@@ -72,10 +73,10 @@ export function useUserRole(): UserRoleData {
           .from("shift_sessions")
           .select("id")
           .eq("employee_id", employee.id)
-          .eq("status", "active")
+          .in("status", ["active", "open"])
           .limit(1)
           .maybeSingle();
-        
+
         setHasActiveShift(!!session);
       }
     } catch (err) {
@@ -105,5 +106,6 @@ export function useUserRole(): UserRoleData {
     isLoading,
     isValet: role === "cochero",
     hasActiveShift,
+    refresh: fetchUserRole,
   };
 }

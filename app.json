@@ -56,6 +56,14 @@
         "projectId": "7f5cbadd-5d02-4955-b1ad-509ce6dffe20"
       }
     },
+    "updates": {
+      "url": "https://u.expo.dev/7f5cbadd-5d02-4955-b1ad-509ce6dffe20",
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "owner": "epigibson"
   }
 }
