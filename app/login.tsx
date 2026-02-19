@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, useColorScheme } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, useColorScheme, Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { ShieldCheck } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFeedback } from '../contexts/feedback-context';
+import * as Updates from 'expo-updates';
 
 export default function LoginScreen() {
     const [email, setEmail] = useState('');
@@ -12,6 +13,26 @@ export default function LoginScreen() {
     const router = useRouter();
     const isDark = useColorScheme() === 'dark';
     const { showFeedback } = useFeedback();
+
+    useEffect(() => {
+        async function checkUpdates() {
+            try {
+                const update = await Updates.checkForUpdateAsync();
+                if (update.isAvailable) {
+                    await Updates.fetchUpdateAsync();
+                    Alert.alert(
+                        "Actualización Disponible",
+                        "Se descargó una nueva versión. La aplicación se reiniciará.",
+                        [{ text: "OK", onPress: () => Updates.reloadAsync() }],
+                        { cancelable: false }
+                    );
+                }
+            } catch (error) {
+                console.log("Error checking updates:", error);
+            }
+        }
+        checkUpdates();
+    }, []);
 
     const handleLogin = async () => {
         if (!email || !password) {

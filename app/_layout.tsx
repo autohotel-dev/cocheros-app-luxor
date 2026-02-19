@@ -8,7 +8,19 @@ import { ThemeProvider, useTheme } from '../contexts/theme-context';
 import { FeedbackProvider } from '../contexts/feedback-context';
 import { InAppNotificationProvider } from '../contexts/in-app-notification-context';
 import { useNotifications } from '../hooks/use-notifications';
+import { OfflineBanner } from '../components/OfflineBanner';
+import { GlobalErrorBoundary } from '../components/GlobalErrorBoundary';
+// import * as Sentry from 'sentry-expo';
 import "../global.css";
+
+// Optional: Initialize Sentry if DSN is provided
+// if (process.env.EXPO_PUBLIC_SENTRY_DSN) {
+//     Sentry.init({
+//         dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+//         enableInExpoDevelopment: true,
+//         debug: false,
+//     });
+// }
 
 function RootLayoutNav() {
     const segments = useSegments();
@@ -94,13 +106,16 @@ function RootLayoutNav() {
 export default function RootLayout() {
     return (
         <SafeAreaProvider>
-            <ThemeProvider>
-                <FeedbackProvider>
-                    <InAppNotificationProvider>
-                        <RootLayoutNav />
-                    </InAppNotificationProvider>
-                </FeedbackProvider>
-            </ThemeProvider>
+            <GlobalErrorBoundary>
+                <ThemeProvider>
+                    <FeedbackProvider>
+                        <InAppNotificationProvider>
+                            <OfflineBanner />
+                            <RootLayoutNav />
+                        </InAppNotificationProvider>
+                    </FeedbackProvider>
+                </ThemeProvider>
+            </GlobalErrorBoundary>
         </SafeAreaProvider>
     );
 }

@@ -3,7 +3,7 @@
     "name": "Auto Hotel Luxor",
     "slug": "valet-luxor",
     "scheme": "valet-luxor",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -40,7 +40,8 @@
           "androidMode": "default",
           "androidCollapsedTitle": "Auto Hotel Luxor"
         }
-      ]
+      ],
+      "sentry-expo"
     ],
     "notification": {
       "icon": "./assets/adaptive-icon.png",
