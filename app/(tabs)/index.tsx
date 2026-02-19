@@ -151,7 +151,18 @@ export default function DashboardScreen() {
             await refresh(); // Actualizar estado del usuario
             showFeedback('¡Bienvenido!', 'Tu turno ha iniciado correctamente');
         } catch (err: any) {
-            showFeedback('Error', err.message || 'No se pudo iniciar el turno', 'error');
+            const errorMessage = err.message || '';
+            if (errorMessage.includes("ROLE_SHIFT_LIMIT_EXCEEDED")) {
+                const parts = errorMessage.split("::");
+                const currentRole = parts[1] || "tu rol";
+                const limit = parts[2] || "?";
+                Alert.alert(
+                    "Límite de Turnos Alcanzado",
+                    `Ya hay ${limit} ${currentRole}(s) con turno activo.\n\nNo se permiten más turnos simultáneos para este rol.`
+                );
+            } else {
+                showFeedback('Error', errorMessage || 'No se pudo iniciar el turno', 'error');
+            }
         } finally {
             setLoading(false);
         }
