@@ -3,7 +3,7 @@
     "name": "Auto Hotel Luxor",
     "slug": "valet-luxor",
     "scheme": "valet-luxor",
-    "version": "1.0.1",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -59,12 +59,13 @@
     },
     "updates": {
       "url": "https://u.expo.dev/7f5cbadd-5d02-4955-b1ad-509ce6dffe20",
-      "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
+      "fallbackToCacheTimeout": 5000,
+      "checkAutomatically": "ON_LOAD",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "owner": "epigibson"
   }
 }
